@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="Windows-1252"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
-	Version="9.00"
+	Version="9,00"
 	Name="darkplaces-wgl"
 	ProjectGUID="{6E3D4311-BB84-4EB7-8C6C-10AA3D249C28}"
 	RootNamespace="darkplaceswgl"
@@ -275,6 +275,7 @@
 				EnableIntrinsicFunctions="true"
 				PreprocessorDefinitions="WIN32;WIN64;NDEBUG;_WINDOWS;WIN32_LEAN_AND_MEAN;SUPPORTDIRECTX;SUPPORTD3D;_FILE_OFFSET_BITS=64;__KERNEL_STRICT_NAMES"
 				RuntimeLibrary="2"
+				StructMemberAlignment="0"
 				EnableFunctionLevelLinking="true"
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
