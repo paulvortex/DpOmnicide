@@ -32,28 +32,36 @@ line of sight checks trace->inopen and trace->inwater, but bullets don't
 */
 
 static void World_Physics_Init(void);
+static void World_Navigation_Init(void);
 void World_Init(void)
 {
 	Collision_Init();
 	World_Physics_Init();
+	World_Navigation_Init();
 }
 
 static void World_Physics_Shutdown(void);
+static void World_Navigation_Shutdown(void);
 void World_Shutdown(void)
 {
 	World_Physics_Shutdown();
+	World_Navigation_Shutdown();
 }
 
 static void World_Physics_Start(world_t *world);
+static void World_Navigation_Start(world_t *world);
 void World_Start(world_t *world)
 {
 	World_Physics_Start(world);
+	World_Navigation_Start(world);
 }
 
 static void World_Physics_End(world_t *world);
+static void World_Navigation_End(world_t *world);
 void World_End(world_t *world)
 {
 	World_Physics_End(world);
+	World_Navigation_End(world);
 }
 
 //============================================================================
@@ -2367,7 +2375,7 @@ static void World_Physics_Frame_BodyFromEntity(world_t *world, prvm_edict_t *ed)
 				// build convex geometry from trimesh data
 				// this ensures that trimesh's triangles can form correct convex geometry
 				// not many of error checking is performed
-				// ODE's conve hull data consist of:
+				// ODE's convex hull data consist of:
 				//    planes  : an array of planes in the form: normal X, normal Y, normal Z, distance
 				//    points  : an array of points X,Y,Z
 				//    polygons: an array of indices to the points of each  polygon,it should be the number of vertices
@@ -3120,4 +3128,126 @@ void World_Physics_Frame(world_t *world, double frametime, double gravity)
 		}
 	}
 #endif
+}
+
+/*
+===============================================================================
+
+ RECAST NAVIGATION SUPPORT
+
+===============================================================================
+*/
+
+typedef struct
+{
+} recastMesh_t;
+
+#ifdef USERECAST
+#include "Recast.h"
+#endif
+
+#ifdef USERECAST
+cvar_t navigation_recast = {0, "navigation_recast", "0", "run Recast/Detour navigation"};
+cvar_t recast_build_cellsize = {0, "recast_build_cellsize", "16", "cell size to build navigation mesh with"};
+cvar_t recast_build_cellheight = {0, "recast_build_cellheight", "32", "cell height to build navigation mesh with"};
+cvar_t recast_build_walkslope = {0, "recast_build_walkslope", "45", "max slope for walking agents"};
+cvar_t recast_build_walkheight = {0, "recast_build_walkheight", "2", "height of walking agents"};
+cvar_t recast_build_walkclimb = {0, "recast_build_walkclimb", "0.9", "climb height for walking agents"};
+cvar_t recast_build_agentradius = {0, "recast_build_agentradius", "0.9", "agent radius"};
+cvar_t recast_build_maxedgelen = {0, "recast_build_maxedgelen", "12", "max edge length"};
+cvar_t recast_build_maxerror = {0, "recast_build_maxerror", "1.3", "max simplification error"};
+cvar_t recast_build_regionminarea = {0, "recast_build_regionminarea", "8", "min region area"};
+cvar_t recast_build_regionmergesize = {0, "recast_build_regionmergesize", "20", "region merge size"};
+cvar_t recast_build_vertsperpoly = {0, "recast_build_vertsperpoly", "6", "verts per poly"};
+cvar_t recast_build_detailsampledist = {0, "recast_build_detailsampledist", "6", "detail sample dist"};
+cvar_t recast_build_detailsamplemaxerror = {0, "recast_build_detailsamplemaxerror", "1", "detail sample max error"};
+
+void Recast_Build_f(void)
+{
+	rcConfig config;
+	rcContext *buildcontext;
+	rcHeightfield* heightfield;
+
+	// Init build configuration from GUI
+	memset(&config, 0, sizeof(config));
+	config.cs = recast_build_cellsize.value;
+	config.ch = recast_build_cellheight.value;
+	config.walkableSlopeAngle = recast_build_walkslope.value;
+	config.walkableHeight = (int)ceilf(recast_build_walkheight.value / config.ch);
+	config.walkableClimb = (int)floorf(recast_build_walkclimb.value / config.ch);
+	config.walkableRadius = (int)ceilf(recast_build_agentradius.value / config.cs);
+	config.maxEdgeLen = (int)(recast_build_maxedgelen.value / config.cs);
+	config.maxSimplificationError = recast_build_maxerror.value;
+	config.minRegionArea = (int)rcSqr(recast_build_regionminarea.value);		// Note: area = size*size
+	config.mergeRegionArea = (int)rcSqr(recast_build_regionmergesize.value);	// Note: area = size*size
+	config.maxVertsPerPoly = recast_build_vertsperpoly.integer;
+	config.detailSampleDist = recast_build_detailsampledist.value < 0.9f ? 0 : config.cs * recast_build_detailsampledist.value;
+	config.detailSampleMaxError = config.ch * recast_build_detailsamplemaxerror.value;
+
+	// Set the area where the navigation will be build.
+	// Here the bounds of the input mesh are used, but the
+	// area could be specified by an user defined box, etc.
+	rcVcopy(config.bmin, sv.worldmodel->normalmins);
+	rcVcopy(config.bmax, sv.worldmodel->normalmaxs);
+	rcCalcGridSize(config.bmin, config.bmax, config.cs, &config.width, &config.height);
+
+	// Start the build process.
+	// Allocate voxel heightfield where we rasterize our input data to.
+	Con_Printf("Building navigation:\n%d x %d cells\n", config.width, config.height);
+	heightfield = rcAllocHeightfield();
+	if (!heightfield)
+	{
+		Con_Printf("Error: cannot allocate voxel heightfield.\n");
+		return;
+	}
+	if (!rcCreateHeightfield(buildcontext, *heightfield, config.width, config.height, config.bmin, config.bmax, config.cs, config.ch))
+	{
+		Con_Printf("Error: cannot create solid heightfield.\n");
+		return;
+	}
+}
+#endif
+
+static void World_Navigation_Init(void)
+{
+	#ifdef USERECAST
+	Cvar_RegisterVariable(&navigation_recast);
+	Cvar_RegisterVariable(&recast_build_cellsize);
+	Cvar_RegisterVariable(&recast_build_cellheight);
+	Cvar_RegisterVariable(&recast_build_walkslope);
+	Cvar_RegisterVariable(&recast_build_walkheight);
+	Cvar_RegisterVariable(&recast_build_walkclimb);
+	Cvar_RegisterVariable(&recast_build_agentradius);
+	Cvar_RegisterVariable(&recast_build_maxedgelen);
+	Cvar_RegisterVariable(&recast_build_maxerror);
+	Cvar_RegisterVariable(&recast_build_regionminarea);
+	Cvar_RegisterVariable(&recast_build_regionmergesize);
+	Cvar_RegisterVariable(&recast_build_vertsperpoly);
+	Cvar_RegisterVariable(&recast_build_detailsampledist);
+	Cvar_RegisterVariable(&recast_build_detailsamplemaxerror);
+
+	Cmd_AddCommand("recast_build", Recast_Build_f, "generate recast mesh");
+	#endif
+}
+
+static void World_Navigation_Shutdown(void)
+{
+	#ifdef USERECAST
+	#endif
+}
+
+static void World_Navigation_Start(world_t *world)
+{
+	#ifdef USERECAST
+	if (world->prog != SVVM_prog)
+		return;
+	#endif
+}
+
+static void World_Navigation_End(world_t *world)
+{
+	#ifdef USERECAST
+	if (world->prog != SVVM_prog)
+		return;
+	#endif
 }
