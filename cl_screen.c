@@ -44,6 +44,7 @@ cvar_t scr_loadingscreen_firstforstartup = {0, "scr_loadingscreen_firstforstartu
 cvar_t scr_loadingscreen_barcolor = {0, "scr_loadingscreen_barcolor", "0 0 1", "rgb color of loadingscreen progress bar"};
 cvar_t scr_loadingscreen_barheight = {0, "scr_loadingscreen_barheight", "8", "the height of the loadingscreen progress bar"};
 cvar_t scr_loadingscreen_maxfps = {0, "scr_loadingscreen_maxfps", "10", "restrict maximal FPS for loading screen so it will not update very often (this will make lesser loading times on a maps loading large number of models)"};
+cvar_t scr_loadingscreen_levelstart = {0, "scr_loadingscreen_levelstart", "1", "show loading screen for precached models downloading, world model setup etc."};
 cvar_t scr_infobar_height = {0, "scr_infobar_height", "8", "the height of the infobar items"};
 cvar_t vid_conwidth = {CVAR_SAVE, "vid_conwidth", "640", "virtual width of 2D graphics system"};
 cvar_t vid_conheight = {CVAR_SAVE, "vid_conheight", "480", "virtual height of 2D graphics system"};
@@ -1319,6 +1320,7 @@ void CL_Screen_Init(void)
 	Cvar_RegisterVariable (&scr_loadingscreen_barcolor);
 	Cvar_RegisterVariable (&scr_loadingscreen_barheight);
 	Cvar_RegisterVariable (&scr_loadingscreen_maxfps);
+	Cvar_RegisterVariable (&scr_loadingscreen_levelstart);
 	Cvar_RegisterVariable (&scr_infobar_height);
 	Cvar_RegisterVariable (&scr_showram);
 	Cvar_RegisterVariable (&scr_showturtle);

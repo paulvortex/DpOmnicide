@@ -1055,6 +1055,8 @@ static void CL_UpdateItemsAndWeapon(void)
 #define LOADPROGRESSWEIGHT_WORLDMODEL      30.0
 #define LOADPROGRESSWEIGHT_WORLDMODEL_INIT  2.0
 
+extern cvar_t scr_loadingscreen_levelstart;
+
 static void CL_BeginDownloads(qboolean aborteddownload)
 {
 	char vabuf[1024];
@@ -1072,7 +1074,8 @@ static void CL_BeginDownloads(qboolean aborteddownload)
 	// if we got here...
 	// curl is done, so let's start with the business
 	if(!cl.loadbegun)
-		SCR_PushLoadingScreen(false, "Loading precaches", 1);
+		if (scr_loadingscreen_levelstart.integer)
+			SCR_PushLoadingScreen(false, "Loading precaches", 1);
 	cl.loadbegun = true;
 
 	// if already downloading something from the previous level, don't stop it
@@ -1107,38 +1110,47 @@ static void CL_BeginDownloads(qboolean aborteddownload)
 		if(cl.loadmodel_current == 1)
 		{
 			// worldmodel counts as 16 models (15 + world model setup), for better progress bar
-			SCR_PushLoadingScreen(false, "Loading precached models",
-				(
-					(cl.loadmodel_total - 1) * LOADPROGRESSWEIGHT_MODEL
-				+	LOADPROGRESSWEIGHT_WORLDMODEL
-				+	LOADPROGRESSWEIGHT_WORLDMODEL_INIT
-				) / (
-					(cl.loadmodel_total - 1) * LOADPROGRESSWEIGHT_MODEL
-				+	LOADPROGRESSWEIGHT_WORLDMODEL
-				+	LOADPROGRESSWEIGHT_WORLDMODEL_INIT
-				+	cl.loadsound_total * LOADPROGRESSWEIGHT_SOUND
-				)
-			);
-			SCR_BeginLoadingPlaque(false);
+			if (scr_loadingscreen_levelstart.integer)
+			{
+				SCR_PushLoadingScreen(false, "Loading precached models",
+					(
+						(cl.loadmodel_total - 1) * LOADPROGRESSWEIGHT_MODEL
+					+	LOADPROGRESSWEIGHT_WORLDMODEL
+					+	LOADPROGRESSWEIGHT_WORLDMODEL_INIT
+					) / (
+						(cl.loadmodel_total - 1) * LOADPROGRESSWEIGHT_MODEL
+					+	LOADPROGRESSWEIGHT_WORLDMODEL
+					+	LOADPROGRESSWEIGHT_WORLDMODEL_INIT
+					+	cl.loadsound_total * LOADPROGRESSWEIGHT_SOUND
+					)
+				);
+				SCR_BeginLoadingPlaque(false);
+			}
 		}
 		for (;cl.loadmodel_current < cl.loadmodel_total;cl.loadmodel_current++)
 		{
-			SCR_PushLoadingScreen(false, cl.model_name[cl.loadmodel_current],
-				(
-					(cl.loadmodel_current == 1) ? LOADPROGRESSWEIGHT_WORLDMODEL : LOADPROGRESSWEIGHT_MODEL
-				) / (
-					(cl.loadmodel_total - 1) * LOADPROGRESSWEIGHT_MODEL
-				+	LOADPROGRESSWEIGHT_WORLDMODEL
-				+	LOADPROGRESSWEIGHT_WORLDMODEL_INIT
-				)
-			);
+			if (scr_loadingscreen_levelstart.integer)
+			{
+				SCR_PushLoadingScreen(false, cl.model_name[cl.loadmodel_current],
+					(
+						(cl.loadmodel_current == 1) ? LOADPROGRESSWEIGHT_WORLDMODEL : LOADPROGRESSWEIGHT_MODEL
+					) / (
+						(cl.loadmodel_total - 1) * LOADPROGRESSWEIGHT_MODEL
+					+	LOADPROGRESSWEIGHT_WORLDMODEL
+					+	LOADPROGRESSWEIGHT_WORLDMODEL_INIT
+					)
+				);
+			}
 			if (cl.model_precache[cl.loadmodel_current] && cl.model_precache[cl.loadmodel_current]->Draw)
 			{
-				SCR_PopLoadingScreen(false);
-				if(cl.loadmodel_current == 1)
+				if (scr_loadingscreen_levelstart.integer)
 				{
-					SCR_PushLoadingScreen(false, cl.model_name[cl.loadmodel_current], 1.0 / cl.loadmodel_total);
 					SCR_PopLoadingScreen(false);
+					if(cl.loadmodel_current == 1)
+					{
+						SCR_PushLoadingScreen(false, cl.model_name[cl.loadmodel_current], 1.0 / cl.loadmodel_total);
+						SCR_PopLoadingScreen(false);
+					}
 				}
 				continue;
 			}
@@ -1156,21 +1168,26 @@ static void CL_BeginDownloads(qboolean aborteddownload)
 				}
 				cl.model_precache[cl.loadmodel_current] = Mod_ForName(cl.model_name[cl.loadmodel_current], false, false, cl.model_name[cl.loadmodel_current][0] == '*' ? cl.model_name[1] : NULL);
 			}
-			SCR_PopLoadingScreen(false);
+			if (scr_loadingscreen_levelstart.integer)
+				SCR_PopLoadingScreen(false);
 			if (cl.model_precache[cl.loadmodel_current] && cl.model_precache[cl.loadmodel_current]->Draw && cl.loadmodel_current == 1)
 			{
 				// we now have the worldmodel so we can set up the game world
-				SCR_PushLoadingScreen(true, "world model setup",
-					(
-						LOADPROGRESSWEIGHT_WORLDMODEL_INIT
-					) / (
-						(cl.loadmodel_total - 1) * LOADPROGRESSWEIGHT_MODEL
-					+	LOADPROGRESSWEIGHT_WORLDMODEL
-					+	LOADPROGRESSWEIGHT_WORLDMODEL_INIT
-					)
-				);
+				if (scr_loadingscreen_levelstart.integer)
+				{
+					SCR_PushLoadingScreen(true, "world model setup",
+						(
+							LOADPROGRESSWEIGHT_WORLDMODEL_INIT
+						) / (
+							(cl.loadmodel_total - 1) * LOADPROGRESSWEIGHT_MODEL
+						+	LOADPROGRESSWEIGHT_WORLDMODEL
+						+	LOADPROGRESSWEIGHT_WORLDMODEL_INIT
+						)
+					);
+				}
 				CL_SetupWorldModel();
-				SCR_PopLoadingScreen(true);
+				if (scr_loadingscreen_levelstart.integer)
+					SCR_PopLoadingScreen(true);
 				if (!cl.loadfinished && cl_joinbeforedownloadsfinish.integer)
 				{
 					cl.loadfinished = true;
@@ -1180,7 +1197,8 @@ static void CL_BeginDownloads(qboolean aborteddownload)
 				}
 			}
 		}
-		SCR_PopLoadingScreen(false);
+		if (scr_loadingscreen_levelstart.integer)
+			SCR_PopLoadingScreen(false);
 		// finished loading models
 	}
 
@@ -1188,29 +1206,34 @@ static void CL_BeginDownloads(qboolean aborteddownload)
 	{
 		// loading sounds
 		if(cl.loadsound_current == 1)
-			SCR_PushLoadingScreen(false, "Loading precached sounds",
-				(
-					cl.loadsound_total * LOADPROGRESSWEIGHT_SOUND
-				) / (
-					(cl.loadmodel_total - 1) * LOADPROGRESSWEIGHT_MODEL
-				+	LOADPROGRESSWEIGHT_WORLDMODEL
-				+	LOADPROGRESSWEIGHT_WORLDMODEL_INIT
-				+	cl.loadsound_total * LOADPROGRESSWEIGHT_SOUND
-				)
-			);
+			if (scr_loadingscreen_levelstart.integer)
+				SCR_PushLoadingScreen(false, "Loading precached sounds",
+					(
+						cl.loadsound_total * LOADPROGRESSWEIGHT_SOUND
+					) / (
+						(cl.loadmodel_total - 1) * LOADPROGRESSWEIGHT_MODEL
+					+	LOADPROGRESSWEIGHT_WORLDMODEL
+					+	LOADPROGRESSWEIGHT_WORLDMODEL_INIT
+					+	cl.loadsound_total * LOADPROGRESSWEIGHT_SOUND
+					)
+				);
 		for (;cl.loadsound_current < cl.loadsound_total;cl.loadsound_current++)
 		{
-			SCR_PushLoadingScreen(false, cl.sound_name[cl.loadsound_current], 1.0 / cl.loadsound_total);
+			if (scr_loadingscreen_levelstart.integer)
+				SCR_PushLoadingScreen(false, cl.sound_name[cl.loadsound_current], 1.0 / cl.loadsound_total);
 			if (cl.sound_precache[cl.loadsound_current] && S_IsSoundPrecached(cl.sound_precache[cl.loadsound_current]))
 			{
-				SCR_PopLoadingScreen(false);
+				if (scr_loadingscreen_levelstart.integer)
+					SCR_PopLoadingScreen(false);
 				continue;
 			}
 			CL_KeepaliveMessage(true);
 			cl.sound_precache[cl.loadsound_current] = S_PrecacheSound(cl.sound_name[cl.loadsound_current], false, true);
-			SCR_PopLoadingScreen(false);
+			if (scr_loadingscreen_levelstart.integer)
+				SCR_PopLoadingScreen(false);
 		}
-		SCR_PopLoadingScreen(false);
+		if (scr_loadingscreen_levelstart.integer)
+			SCR_PopLoadingScreen(false);
 		// finished loading sounds
 	}
 
@@ -1328,7 +1351,8 @@ static void CL_BeginDownloads(qboolean aborteddownload)
 		// finished loading sounds
 	}
 
-	SCR_PopLoadingScreen(false);
+	if (scr_loadingscreen_levelstart.integer)
+		SCR_PopLoadingScreen(false);
 
 	if (!cl.loadfinished)
 	{
