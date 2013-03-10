@@ -115,7 +115,7 @@ void CL_ClearState(void)
 	Mem_EmptyPool(cls.levelmempool);
 	memset (&cl, 0, sizeof(cl));
 
-	S_StopAllSounds();
+	S_StopAllSounds(false);
 
 	// reset the view zoom interpolation
 	cl.mviewzoom[0] = cl.mviewzoom[1] = 1;
@@ -344,7 +344,7 @@ void CL_Disconnect(void)
 	Cvar_SetValueQuick(&csqc_progsize, -1);
 	CL_VM_ShutDown();
 // stop sounds (especially looping!)
-	S_StopAllSounds ();
+	S_StopAllSounds (false);
 
 	cl.parsingtextexpectingpingforscores = 0; // just in case no reply has come yet
 

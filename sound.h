@@ -101,7 +101,7 @@ qboolean S_LocalSound (const char *s);
 
 void S_StaticSound (sfx_t *sfx, vec3_t origin, float fvol, float attenuation);
 void S_StopSound (int entnum, int entchannel);
-void S_StopAllSounds (void);
+void S_StopAllSounds (qboolean stopcdaudio);
 void S_PauseGameSounds (qboolean toggle);
 
 void S_StopChannel (unsigned int channel_ind, qboolean lockmutex, qboolean freesfx);

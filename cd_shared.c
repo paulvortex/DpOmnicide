@@ -27,6 +27,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // used by menu to ghost CD audio slider
 cvar_t cdaudioinitialized = {CVAR_READONLY,"cdaudioinitialized","0","indicates if CD Audio system is active"};
 cvar_t cdaudio = {CVAR_SAVE,"cdaudio","1","CD playing mode (0 = never access CD drive, 1 = play CD tracks if no replacement available, 2 = play fake tracks if no CD track available, 3 = play only real CD tracks, 4 = play real CD tracks even instead of named fake tracks)"};
+cvar_t cdaudio_stopbetweenmaps = {0, "cdaudio_stopbetweenmaps", "1", "stop CD audio and fake track playing between map changes/disconnects/etc."};
 
 #define MAX_PLAYLISTS 10
 int music_playlist_active = -1;
@@ -95,7 +96,28 @@ typedef char filename_t[MAX_QPATH];
 static filename_t remap[MAXTRACKS];
 #endif
 static unsigned char maxTrack;
-static int faketrack = -1;
+
+typedef struct faketrack_s
+{
+	sfx_t       *sfx;
+	int          channel;
+	float        volume;
+	faketrack_s  *next;
+
+	float        opt_startpos;
+	qboolean     opt_looping;
+	float        opt_fadein;
+	float        opt_fadeout;
+	qboolean     opt_crossfade;
+	float        opt_volumemod;
+	unsigned int pl_tracknum;
+	filename_t   pl_trackname;
+
+	double       createtime;
+	qboolean     paused;
+}faketrack_t;
+
+faketrack_t *faketracks = NULL;
 
 static float saved_vol = 1.0f;
 
@@ -106,6 +128,119 @@ qboolean cdPlayLooping = false;
 unsigned char cdPlayTrack;
 
 cl_cdstate_t cd;
+
+// get fake track structure for sfx channel
+faketrack_t *CDAudio_FakeTrackForChannel(int channel)
+{
+	faketrack_t *track;
+
+	for (track = faketracks; track; track = track->next)
+		if (channel == track->channel)
+			return track;
+	return NULL;
+}
+
+// check if specified channel belongs to CDAudio fake track
+qboolean CDAudio_IsFakeTrack(int channel)
+{
+	return CDAudio_FakeTrackForChannel(channel) ? true : false;
+}
+
+// stop fake track
+void CDAudio_FakeTrack_Stop(faketrack_t *track)
+{
+	if (track->channel == -1)
+		return;
+	S_StopChannel(track->channel, true, false);
+	track->channel = -1;
+}
+
+// free fake track
+void S_FreeSfx (sfx_t *sfx, qboolean force);
+void CDAudio_FakeTrack_Free(faketrack_t *track)
+{
+	faketrack_t *prev;
+
+	if (!track)
+		return;
+
+	// stop sfx
+	CDAudio_FakeTrack_Stop(track);
+	// free sfx
+	for (prev = faketracks; prev; prev = prev->next)
+		if (prev->sfx == track->sfx)
+			if (prev != track) 
+				break;
+	if (!prev)
+		S_FreeSfx(track->sfx, true);
+	// remove from chain
+	if (faketracks == track)
+		faketracks = track->next;
+	else
+	{
+		for (prev = faketracks; prev; prev = prev->next)
+			if (prev->next == track)
+				prev->next = track->next;
+	}
+	// free
+	Z_Free(track);
+}
+
+// play actual fake track
+void CDAudio_FakeTrack_Start(faketrack_t *track)
+{
+	CDAudio_FakeTrack_Stop(track);
+	track->channel = S_StartSound_StartPosition_Flags(-1, 0, track->sfx, vec3_origin, track->volume * cdvolume, 0, track->opt_startpos, (track->opt_looping ? CHANNELFLAG_FORCELOOP : 0) | CHANNELFLAG_FULLVOLUME | CHANNELFLAG_LOCALSOUND, 1.0f);
+
+	// play message
+	if (track->pl_tracknum >= 1)
+	{
+		if (cdaudio.integer != 0) // we don't need these messages if only fake tracks can be played anyway
+			Con_DPrintf ("Fake CD track %u playing...\n", track->pl_tracknum);
+	}
+	else
+		Con_DPrintf ("BGM track %s playing...\n", track->pl_trackname);
+}
+
+// play fake track
+void CDAudio_FakeTrack_Play(unsigned int playlist_tracknum, const char *playlist_trackname, char *filename, float volume, float startpos, qboolean looping, float fadein, float fadeout, qboolean crossfade)
+{
+	faketrack_t *track;
+	sfx_t* sfx;
+
+	if (!FS_FileExists(filename) || !(sfx = S_PrecacheSound(filename, false, false)))
+		return;
+
+	// if this track already playing - derive position from it
+	if (startpos == -1)
+	{
+		for (track = faketracks; track; track = track->next)
+			if (track->sfx == sfx)
+				if (track->channel != -1)
+					break;
+		if (track)
+			startpos = S_GetChannelPosition(track->channel);
+	}
+	if (startpos == -1)
+		startpos = 0;
+
+	// allocate fake track
+	track = (faketrack_t *)Z_Malloc(sizeof(faketrack_t));
+	memset(track, 0, sizeof(faketrack_t));
+	track->sfx = sfx;
+	track->channel = -1;
+	track->opt_fadein = fadein;
+	track->opt_fadeout = fadeout;
+	track->opt_volumemod = volume;
+	track->opt_crossfade = crossfade;
+	track->opt_startpos = startpos;
+	track->opt_looping = looping;
+	track->pl_tracknum = playlist_tracknum;
+	strlcpy(track->pl_trackname, playlist_trackname, sizeof(filename_t));
+	track->createtime = Sys_DirtyTime();
+	track->next = faketracks;
+	faketracks = track;
+}
 
 static void CDAudio_Eject (void)
 {
@@ -185,10 +320,9 @@ static qboolean CDAudio_Play_real (int track, qboolean looping, qboolean complai
 	return true;
 }
 
-void CDAudio_Play_byName (const char *trackname, qboolean looping, qboolean tryreal, float startposition)
+void CDAudio_Play_byName (const char *trackname, qboolean looping, qboolean tryreal, float startposition, float fadein, float fadeout, qboolean crossfade, float volume)
 {
 	unsigned int track;
-	sfx_t* sfx;
 	char filename[MAX_QPATH];
 
 	Host_StartVideo();
@@ -243,9 +377,11 @@ void CDAudio_Play_byName (const char *trackname, qboolean looping, qboolean tryr
 		track = 0;
 
 	// div0: I assume this code was intentionally there. Maybe turn it into a cvar?
-	if (cdPlaying && cdPlayTrack == track && faketrack == -1)
+	if (cdPlaying && cdPlayTrack == track && !faketracks)
 		return;
-	CDAudio_Stop ();
+
+	if (!faketracks || (!fadein && !fadeout))
+		CDAudio_Stop ();
 
 	if(track >= 1)
 	{
@@ -307,23 +443,10 @@ void CDAudio_Play_byName (const char *trackname, qboolean looping, qboolean tryr
 		if (!FS_FileExists(filename)) dpsnprintf(filename, sizeof(filename), "music/%s.ogg", trackname); // added by motorsep
 		if (!FS_FileExists(filename)) dpsnprintf(filename, sizeof(filename), "music/cdtracks/%s.ogg", trackname); // added by motorsep
 	}
-	if (FS_FileExists(filename) && (sfx = S_PrecacheSound (filename, false, false)))
-	{
-		faketrack = S_StartSound_StartPosition_Flags (-1, 0, sfx, vec3_origin, cdvolume, 0, startposition, (looping ? CHANNELFLAG_FORCELOOP : 0) | CHANNELFLAG_FULLVOLUME | CHANNELFLAG_LOCALSOUND, 1.0f);
-		if (faketrack != -1)
-		{
-			if(track >= 1)
-			{
-				if(cdaudio.integer != 0) // we don't need these messages if only fake tracks can be played anyway
-					Con_DPrintf ("Fake CD track %u playing...\n", track);
-			}
-			else
-				Con_DPrintf ("BGM track %s playing...\n", trackname);
-		}
-	}
+	CDAudio_FakeTrack_Play(track, trackname, filename, volume, startposition, looping, fadein, fadeout, crossfade);
 
 	// If we can't play a fake CD track, try the real one
-	if (faketrack == -1)
+	if (!faketracks)
 	{
 		if(cdaudio.integer == 0 || track < 1)
 		{
@@ -352,13 +475,21 @@ void CDAudio_Play (int track, qboolean looping)
 	if (music_playlist_index.integer >= 0)
 		return;
 	dpsnprintf(buf, sizeof(buf), "%d", (int) track);
-	CDAudio_Play_byName(buf, looping, true, 0);
+	CDAudio_Play_byName(buf, looping, true, -1, 0, 0, false, 1.0);
 }
 
 float CDAudio_GetPosition (void)
 {
-	if(faketrack != -1)
-		return S_GetChannelPosition(faketrack);
+	faketrack_t *track;
+
+	if (faketracks)
+	{
+		// get position of most recent played faketrack
+		for (track = faketracks; track; track = track->next)
+			if (track->channel != -1)
+				return S_GetChannelPosition(track->channel);
+		return -1;
+	}
 	return -1;
 }
 
@@ -372,10 +503,11 @@ void CDAudio_Stop (void)
 	// save the playlist position
 	CDAudio_StopPlaylistTrack();
 
-	if (faketrack != -1)
+	if (faketracks)
 	{
-		S_StopChannel (faketrack, true, true);
-		faketrack = -1;
+		// stop all fake tracks
+		while(faketracks)
+			CDAudio_FakeTrack_Free(faketracks);
 	}
 	else if (cdPlaying && (CDAudio_SysStop() == -1))
 		return;
@@ -392,11 +524,23 @@ void CDAudio_Stop (void)
 
 void CDAudio_Pause (void)
 {
+	faketrack_t *track;
+
 	if (!enabled || !cdPlaying)
 		return;
 
-	if (faketrack != -1)
-		S_SetChannelFlag (faketrack, CHANNELFLAG_PAUSED, true);
+	if (faketracks)
+	{
+		// pause all fake tracks
+		for (track = faketracks; track; track = track->next)
+		{
+			if (track->channel != -1)
+			{
+				S_SetChannelFlag(track->channel, CHANNELFLAG_PAUSED, true);
+				track->paused = true;
+			}
+		}
+	}
 	else if (CDAudio_SysPause() == -1)
 		return;
 
@@ -407,11 +551,23 @@ void CDAudio_Pause (void)
 
 void CDAudio_Resume (void)
 {
+	faketrack_t *track;
+
 	if (!enabled || cdPlaying || !wasPlaying)
 		return;
 
-	if (faketrack != -1)
-		S_SetChannelFlag (faketrack, CHANNELFLAG_PAUSED, false);
+	if (faketracks)
+	{
+		// resume all fake tracks
+		for (track = faketracks; track; track = track->next)
+		{
+			if (track->channel != -1)
+			{
+				S_SetChannelFlag(track->channel, CHANNELFLAG_PAUSED, false);
+				track->paused = false;
+			}
+		}
+	}
 	else if (CDAudio_SysResume() == -1)
 		return;
 	cdPlaying = true;
@@ -420,6 +576,8 @@ void CDAudio_Resume (void)
 static void CD_f (void)
 {
 	const char *command;
+	faketrack_t *track;
+
 #ifdef MAXTRACKS
 	int ret;
 	int n;
@@ -489,7 +647,7 @@ static void CD_f (void)
 	{
 		if (music_playlist_index.integer >= 0)
 			return;
-		CDAudio_Play_byName(Cmd_Argv (2), false, true, (Cmd_Argc() > 3) ? atof( Cmd_Argv(3) ) : 0);
+		CDAudio_Play_byName(Cmd_Argv (2), false, true, (Cmd_Argc() > 3) ? atof(Cmd_Argv(3)) : -1, 0, 0, false, 1.0f);
 		return;
 	}
 
@@ -497,7 +655,62 @@ static void CD_f (void)
 	{
 		if (music_playlist_index.integer >= 0)
 			return;
-		CDAudio_Play_byName(Cmd_Argv (2), true, true, (Cmd_Argc() > 3) ? atof( Cmd_Argv(3) ) : 0);
+		CDAudio_Play_byName(Cmd_Argv (2), true, true, (Cmd_Argc() > 3) ? atof(Cmd_Argv(3)) : -1, 0, 0, false, 1.0f);
+		return;
+	}
+
+	if (strcasecmp(command, "playfake") == 0)
+	{
+		if (music_playlist_index.integer >= 0)
+			return;
+		qboolean loop = false;
+		qboolean crossfade = false;
+		float    fadein = 0.0f;
+		float    fadeout = 0.0f;
+		float    volume = 1.0f;
+		float    startpos = -1.0f;
+		for (int i = 3; i < Cmd_Argc(); i++)
+		{
+			if (strcasecmp(Cmd_Argv(i), "startpos") == 0)
+			{
+				i++;
+				if (i < Cmd_Argc())
+					startpos = atof(Cmd_Argv(i));
+				continue;
+			}
+			if (strcasecmp(Cmd_Argv(i), "volume") == 0)
+			{
+				i++;
+				if (i < Cmd_Argc())
+					volume = atof(Cmd_Argv(i));
+				continue;
+			}
+			if (strcasecmp(Cmd_Argv(i), "fadein") == 0)
+			{
+				i++;
+				if (i < Cmd_Argc())
+					fadein = atof(Cmd_Argv(i));
+				continue;
+			}
+			if (strcasecmp(Cmd_Argv(i), "fadeout") == 0)
+			{
+				i++;
+				if (i < Cmd_Argc())
+					fadeout = atof(Cmd_Argv(i));
+				continue;
+			}
+			if (strcasecmp(Cmd_Argv(i), "loop") == 0)
+			{
+				loop = true;
+				continue;
+			}
+			if (strcasecmp(Cmd_Argv(i), "crossfade") == 0)
+			{
+				crossfade = true;
+				continue;
+			}
+		}
+		CDAudio_Play_byName(Cmd_Argv (2), loop, false, startpos, fadein, fadeout, crossfade, volume);
 		return;
 	}
 
@@ -527,7 +740,7 @@ static void CD_f (void)
 
 	if (strcasecmp(command, "eject") == 0)
 	{
-		if (faketrack == -1)
+		if (!faketracks)
 			CDAudio_Stop();
 		CDAudio_Eject();
 		cdValid = false;
@@ -549,6 +762,12 @@ static void CD_f (void)
 			Con_Printf("Volume is %f\n", cdvolume);
 		else
 			Con_Printf("Can't get CD volume\n");
+		if (faketracks)
+		{
+			Con_Printf("Faketracks playing:\n");
+			for (track = faketracks; track; track = track->next)
+				Con_Printf(" volume %f file %s\n", track->volume, track->sfx->name);
+		}
 		return;
 	}
 
@@ -560,8 +779,9 @@ static void CD_f (void)
 	Con_Printf("cd remap <remap1> [remap2] [remap3] [...] - chooses (possibly emulated) CD tracks to play when a map asks for a particular track, this has many uses\n");
 	Con_Printf("cd close - closes CD tray\n");
 	Con_Printf("cd eject - stops playing music and opens CD tray to allow you to change disc\n");
-	Con_Printf("cd play <tracknumber> <startposition> - plays selected track in remapping table\n");
-	Con_Printf("cd loop <tracknumber> <startposition> - plays and repeats selected track in remapping table\n");
+	Con_Printf("cd play <tracknumber> [startposition] - plays selected track in remapping table\n");
+	Con_Printf("cd loop <tracknumber> [startposition] - plays and repeats selected track in remapping table\n");
+	Con_Printf("cd playfake <tracknumber> [startpos x] [fadein x] [fadeout x] [volume x] [crossfade] [loop] - play emulated track with options\n");
 	Con_Printf("cd stop - stops playing current CD track\n");
 	Con_Printf("cd pause - pauses CD playback\n");
 	Con_Printf("cd resume - unpauses CD playback\n");
@@ -570,6 +790,8 @@ static void CD_f (void)
 
 static void CDAudio_SetVolume (float newvol)
 {
+	faketrack_t *track;
+
 	// If the volume hasn't changed
 	if (newvol == cdvolume)
 		return;
@@ -583,8 +805,13 @@ static void CDAudio_SetVolume (float newvol)
 		if (cdvolume == 0.0f)
 			CDAudio_Resume ();
 
-		if (faketrack != -1)
-			S_SetChannelVolume (faketrack, newvol);
+		if (faketracks)
+		{
+			// update volume of all playing fake tracks
+			for (track = faketracks; track; track = track->next)
+				if (track->channel)
+					S_SetChannelVolume(track->channel, track->volume * track->opt_volumemod * newvol);
+		}
 		else
 			CDAudio_SysSetVolume (newvol * mastervolume.value);
 	}
@@ -670,8 +897,8 @@ void CDAudio_StartPlaylist(qboolean resume)
 			}
 			if (trackname[0])
 			{
-				CDAudio_Play_byName(trackname, false, false, position);
-				if (faketrack != -1)
+				CDAudio_Play_byName(trackname, false, false, position, 0, 0, false, 1.0f);
+				if (faketracks)
 					music_playlist_active = index;
 			}
 		}
@@ -679,11 +906,61 @@ void CDAudio_StartPlaylist(qboolean resume)
 	music_playlist_playing = music_playlist_active >= 0 ? 1 : -1;
 }
 
+double cdupdatetime;
+
 void CDAudio_Update (void)
 {
 	static int lastplaylist = -1;
+	double frametime, newtime;
+	float maxvol, fadein, fadeout;
+	faketrack_t *track, *next;
+
 	if (!enabled)
 		return;
+
+	// update fake tracks
+	newtime = Sys_DirtyTime();
+	frametime = newtime - cdupdatetime;
+	cdupdatetime = newtime;
+	if (faketracks)
+	{
+		// since using non-linear fade, timers (which fadein and fadeout are) is not very accurate
+		fadein = faketracks->opt_fadein ? (1.0 / faketracks->opt_fadein) * frametime : 1.0f;
+		if (fadein > 1.0)
+			fadein = 1.0;
+		fadeout = faketracks->opt_fadeout ? (1.0 / faketracks->opt_fadeout) * frametime * 4.0 : 1.0f;
+		if (fadeout > 1.0)
+			fadeout = 1.0;
+
+		// maximal volume of background tracks
+		maxvol = 0.0f;
+		for (track = faketracks->next; track; track = track->next)
+			if (track->channel != -1)
+				maxvol = max(maxvol, track->volume);
+
+		// fade in foreground
+		if (faketracks->volume < 1.0f && (faketracks->opt_crossfade || maxvol <= 0.01f))
+			faketracks->volume = faketracks->volume * (1.0 - fadein) + fadein;
+		if (faketracks->volume)
+		{
+			 if (faketracks->channel == -1)
+				 CDAudio_FakeTrack_Start(faketracks);
+			 else
+				S_SetChannelVolume(faketracks->channel, faketracks->volume * faketracks->opt_volumemod * cdvolume);
+		}
+
+		// fade out background
+		for (track = faketracks->next; track; track = next)
+		{
+			next = track->next;
+			track->volume = track->volume * (1.0 - fadeout);
+			if (track->volume <= 0.01f || track->channel == -1)
+				CDAudio_FakeTrack_Free(track);
+			else
+				S_SetChannelVolume(track->channel, track->volume * track->opt_volumemod * cdvolume);
+			fadeout = min(1.0f, fadeout * 4.0); // increase fading speed when moving chain
+		}
+	}
 
 	CDAudio_SetVolume (bgmvolume.value);
 	if (music_playlist_playing > 0 && CDAudio_GetPosition() < 0)
@@ -692,15 +969,14 @@ void CDAudio_Update (void)
 		CDAudio_StartPlaylist(false);
 		lastplaylist = music_playlist_index.integer;
 	}
-	else if (lastplaylist != music_playlist_index.integer
-	|| (bgmvolume.value > 0 && !music_playlist_playing && music_playlist_index.integer >= 0))
+	else if (lastplaylist != music_playlist_index.integer || (bgmvolume.value > 0 && !music_playlist_playing && music_playlist_index.integer >= 0))
 	{
 		// active playlist changed, save position and switch track
 		CDAudio_StartPlaylist(true);
 		lastplaylist = music_playlist_index.integer;
 	}
 
-	if (faketrack == -1 && cdaudio.integer != 0 && bgmvolume.value != 0)
+	if (!faketracks && cdaudio.integer != 0 && bgmvolume.value != 0)
 		CDAudio_SysUpdate();
 }
 
@@ -717,6 +993,8 @@ int CDAudio_Init (void)
 
 	CDAudio_SysInit();
 
+	cdupdatetime = Sys_DirtyTime();
+
 #ifdef MAXTRACKS
 	for (i = 0; i < MAXTRACKS; i++)
 		*remap[i] = 0;
@@ -724,6 +1002,7 @@ int CDAudio_Init (void)
 
 	Cvar_RegisterVariable(&cdaudio);
 	Cvar_RegisterVariable(&cdaudioinitialized);
+	Cvar_RegisterVariable(&cdaudio_stopbetweenmaps);
 	Cvar_SetValueQuick(&cdaudioinitialized, true);
 	enabled = true;
 

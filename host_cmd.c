@@ -491,7 +491,7 @@ void Host_Reconnect_f (void)
 		if (cls.qw_downloadmemory)  // don't change when downloading
 			return;
 
-		S_StopAllSounds();
+		S_StopAllSounds(false);
 
 		if (cls.state == ca_connected && cls.signon < SIGNONS)
 		{

@@ -874,7 +874,7 @@ static void QW_CL_Changing_f(void)
 	if (cls.qw_downloadmemory)  // don't change when downloading
 		return;
 
-	S_StopAllSounds();
+	S_StopAllSounds(false);
 	cl.intermission = 0;
 	cls.signon = 1;	// not active anymore, but not disconnected
 	Con_Printf("\nChanging map...\n");
@@ -1661,7 +1661,7 @@ static void CL_ParseServerInfo (void)
 	if (!sv.active)
 	{
 		SCR_BeginLoadingPlaque(false);
-		S_StopAllSounds();
+		S_StopAllSounds(false);
 		// free q3 shaders so that any newly downloaded shaders will be active
 		Mod_FreeQ3Shaders();
 	}

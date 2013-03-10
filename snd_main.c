@@ -313,6 +313,11 @@ static void S_PlayVol_f(void)
 	S_Play_Common (-1.0f, 0.0f);
 }
 
+static void S_StopAllSounds_f(void)
+{
+	S_StopAllSounds(true);
+}
+
 static void S_SoundList_f (void)
 {
 	unsigned int i;
@@ -887,7 +892,7 @@ void S_Init(void)
 	Cmd_AddCommand("play", S_Play_f, "play a sound at your current location (not heard by anyone else)");
 	Cmd_AddCommand("play2", S_Play2_f, "play a sound globally throughout the level (not heard by anyone else)");
 	Cmd_AddCommand("playvol", S_PlayVol_f, "play a sound at the specified volume level at your current location (not heard by anyone else)");
-	Cmd_AddCommand("stopsound", S_StopAllSounds, "silence");
+	Cmd_AddCommand("stopsound", S_StopAllSounds_f, "silence");
 	Cmd_AddCommand("soundlist", S_SoundList_f, "list loaded sounds");
 	Cmd_AddCommand("soundinfo", S_SoundInfo_f, "print sound system information (such as channels and speed)");
 	Cmd_AddCommand("snd_restart", S_Restart_f, "restart sound system");
@@ -959,7 +964,7 @@ void S_UnloadAllSounds_f (void)
 	}
 
 	// stop any active sounds
-	S_StopAllSounds();
+	S_StopAllSounds(true);
 
 	// because the ambient sounds will be freed, clear the pointers
 	for (i = 0;i < (int)sizeof (ambient_sfxs) / (int)sizeof (ambient_sfxs[0]);i++)
@@ -1813,7 +1818,9 @@ void S_StopSound(int entnum, int entchannel)
 		}
 }
 
-void S_StopAllSounds (void)
+qboolean CDAudio_IsFakeTrack(int channel);
+extern cvar_t cdaudio_stopbetweenmaps;
+void S_StopAllSounds(qboolean stopcdaudio)
 {
 	unsigned int i;
 
@@ -1821,8 +1828,9 @@ void S_StopAllSounds (void)
 	if (snd_renderbuffer == NULL)
 		return;
 
-	// stop CD audio because it may be using a faketrack
-	CDAudio_Stop();
+	// stop CD audio
+	if (stopcdaudio || cdaudio_stopbetweenmaps.value)
+		CDAudio_Stop();
 
 	if (simsound || SndSys_LockRenderBuffer ())
 	{
@@ -1830,11 +1838,18 @@ void S_StopAllSounds (void)
 		size_t memsize;
 
 		for (i = 0; i < total_channels; i++)
+		{
+			if (CDAudio_IsFakeTrack(i))
+				continue;
 			if (channels[i].sfx)
 				S_StopChannel (i, false, false);
+			memset(&channels[i], 0, sizeof(channel_t));
+		}
+		if (total_channels < MAX_CHANNELS)
+			memset(channels + total_channels * sizeof(channel_t), 0, (MAX_CHANNELS - total_channels) * sizeof(channel_t));
 
-		total_channels = MAX_DYNAMIC_CHANNELS + NUM_AMBIENTS;	// no statics
-		memset(channels, 0, MAX_CHANNELS * sizeof(channel_t));
+		//total_channels = MAX_DYNAMIC_CHANNELS + NUM_AMBIENTS;	// no statics
+		//memset(channels, 0, MAX_CHANNELS * sizeof(channel_t));
 
 		// Mute the contents of the submittion buffer
 		clear = (snd_renderbuffer->format.width == 1) ? 0x80 : 0;

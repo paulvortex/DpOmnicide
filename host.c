@@ -1385,7 +1385,7 @@ void Host_Shutdown(void)
 	isdown = true;
 
 	// be quiet while shutting down
-	S_StopAllSounds();
+	S_StopAllSounds(true);
 
 	// end the server thread
 	if (svs.threaded)
