@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 //cvar_t r_subdivide_size = {CVAR_SAVE, "r_subdivide_size", "128", "how large water polygons should be (smaller values produce more polygons which give better warping effects)"};
 cvar_t mod_bsp_portalize = {0, "mod_bsp_portalize", "1", "enables portal generation from BSP tree (may take several seconds per map), used by r_drawportals, r_useportalculling, r_shadow_realtime_world_compileportalculling, sv_cullentities_portal"};
+cvar_t mod_bsp_createshadowmesh = {0, "mod_bsp_createshadowmesh", "1", "make a single combined shadow mesh of worldspawn (may take several seconds per map) to allow optimized shadow volume creation and shadowed surfaces culling for shadowmapped lights. A value of 2 will create shadowmesh but no neighbor triangles info (which is used by shadow volumes)."};
 cvar_t r_novis = {0, "r_novis", "0", "draws whole level, see also sv_cullentities_pvs 0"};
 cvar_t r_nosurftextures = {0, "r_nosurftextures", "0", "pretends there was no texture lump found in the q1bsp/hlbsp loading (useful for debugging this rare case)"};
 cvar_t r_subdivisions_tolerance = {0, "r_subdivisions_tolerance", "4", "maximum error tolerance on curve subdivision for rendering purposes (in other words, the curves will be given as many polygons as necessary to represent curves at this quality)"};
@@ -72,6 +73,7 @@ void Mod_BrushInit(void)
 {
 //	Cvar_RegisterVariable(&r_subdivide_size);
 	Cvar_RegisterVariable(&mod_bsp_portalize);
+	Cvar_RegisterVariable(&mod_bsp_createshadowmesh);
 	Cvar_RegisterVariable(&r_novis);
 	Cvar_RegisterVariable(&r_nosurftextures);
 	Cvar_RegisterVariable(&r_subdivisions_tolerance);
@@ -3731,23 +3733,42 @@ static int Mod_Q1BSP_CreateShadowMesh(dp_model_t *mod)
 	int j;
 	int numshadowmeshtriangles = 0;
 	msurface_t *surface;
+
 	if (cls.state == ca_dedicated)
 		return 0;
 	// make a single combined shadow mesh to allow optimized shadow volume creation
-
-	for (j = 0, surface = mod->data_surfaces;j < mod->num_surfaces;j++, surface++)
+	if (mod->brush.parentmodel)
 	{
-		surface->num_firstshadowmeshtriangle = numshadowmeshtriangles;
-		numshadowmeshtriangles += surface->num_triangles;
+		for (j = 0;j < mod->nummodelsurfaces;j++)
+		{
+			surface = mod->data_surfaces + j + mod->firstmodelsurface;
+			surface->num_firstshadowmeshtriangle = numshadowmeshtriangles;
+			numshadowmeshtriangles += surface->num_triangles;
+		}
+		mod->brush.shadowmesh = Mod_ShadowMesh_Begin(mod->brush.parentmodel->mempool, numshadowmeshtriangles * 3, numshadowmeshtriangles, NULL, NULL, NULL, false, false, true);
+		for (j = 0;j < mod->nummodelsurfaces;j++)
+		{
+			surface = mod->data_surfaces + j + mod->firstmodelsurface;
+			if (surface->num_triangles > 0)
+				Mod_ShadowMesh_AddMesh(mod->brush.parentmodel->mempool, mod->brush.shadowmesh, NULL, NULL, NULL, mod->surfmesh.data_vertex3f, NULL, NULL, NULL, NULL, surface->num_triangles, (mod->surfmesh.data_element3i + 3 * surface->num_firsttriangle));
+		}
+		mod->brush.shadowmesh = Mod_ShadowMesh_Finish(mod->brush.parentmodel->mempool, mod->brush.shadowmesh, false, r_enableshadowvolumes.integer != 0, false);
 	}
-	mod->brush.shadowmesh = Mod_ShadowMesh_Begin(mod->mempool, numshadowmeshtriangles * 3, numshadowmeshtriangles, NULL, NULL, NULL, false, false, true);
-	for (j = 0, surface = mod->data_surfaces;j < mod->num_surfaces;j++, surface++)
-		if (surface->num_triangles > 0)
-			Mod_ShadowMesh_AddMesh(mod->mempool, mod->brush.shadowmesh, NULL, NULL, NULL, mod->surfmesh.data_vertex3f, NULL, NULL, NULL, NULL, surface->num_triangles, (mod->surfmesh.data_element3i + 3 * surface->num_firsttriangle));
-	mod->brush.shadowmesh = Mod_ShadowMesh_Finish(mod->mempool, mod->brush.shadowmesh, false, r_enableshadowvolumes.integer != 0, false);
-	if (mod->brush.shadowmesh && mod->brush.shadowmesh->neighbor3i)
+	else
+	{
+		for (j = 0, surface = mod->data_surfaces;j < mod->num_surfaces;j++, surface++)
+		{
+			surface->num_firstshadowmeshtriangle = numshadowmeshtriangles;
+			numshadowmeshtriangles += surface->num_triangles;
+		}
+		mod->brush.shadowmesh = Mod_ShadowMesh_Begin(mod->mempool, numshadowmeshtriangles * 3, numshadowmeshtriangles, NULL, NULL, NULL, false, false, true);
+		for (j = 0, surface = mod->data_surfaces;j < mod->num_surfaces;j++, surface++)
+			if (surface->num_triangles > 0)
+				Mod_ShadowMesh_AddMesh(mod->mempool, mod->brush.shadowmesh, NULL, NULL, NULL, mod->surfmesh.data_vertex3f, NULL, NULL, NULL, NULL, surface->num_triangles, (mod->surfmesh.data_element3i + 3 * surface->num_firsttriangle));
+		mod->brush.shadowmesh = Mod_ShadowMesh_Finish(mod->mempool, mod->brush.shadowmesh, false, r_enableshadowvolumes.integer != 0, false);
+	}
+	if (mod->brush.shadowmesh && mod->brush.shadowmesh->neighbor3i && mod_bsp_createshadowmesh.integer < 2)
 		Mod_BuildTriangleNeighbors(mod->brush.shadowmesh->neighbor3i, mod->brush.shadowmesh->element3i, mod->brush.shadowmesh->numtriangles);
-
 	return numshadowmeshtriangles;
 }
 
@@ -3913,7 +3934,8 @@ void Mod_Q1BSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 	mod->numskins = 1;
 
 	// make a single combined shadow mesh to allow optimized shadow volume creation
-	Mod_Q1BSP_CreateShadowMesh(loadmodel);
+	if (mod_bsp_createshadowmesh.integer)
+		Mod_Q1BSP_CreateShadowMesh(loadmodel);
 
 	if (loadmodel->brush.numsubmodels)
 		loadmodel->brush.submodels = (dp_model_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brush.numsubmodels * sizeof(dp_model_t *));
@@ -7299,7 +7321,8 @@ static void Mod_Q3BSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 	loadmodel->brush.supportwateralpha = true;
 
 	// make a single combined shadow mesh to allow optimized shadow volume creation
-	Mod_Q1BSP_CreateShadowMesh(loadmodel);
+	if (mod_bsp_createshadowmesh.integer)
+		Mod_Q1BSP_CreateShadowMesh(loadmodel);
 
 	loadmodel->brush.num_leafs = 0;
 	Mod_Q3BSP_RecursiveFindNumLeafs(loadmodel->brush.data_nodes);
@@ -7922,7 +7945,8 @@ void Mod_OBJ_Load(dp_model_t *mod, void *buffer, void *bufferend)
 	Mem_Free(vertexhashdata);
 
 	// make a single combined shadow mesh to allow optimized shadow volume creation
-	Mod_Q1BSP_CreateShadowMesh(loadmodel);
+	if (mod_bsp_createshadowmesh.integer)
+		Mod_Q1BSP_CreateShadowMesh(loadmodel);
 
 	// compute all the mesh information that was not loaded from the file
 	if (loadmodel->surfmesh.data_element3s)

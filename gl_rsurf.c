@@ -882,7 +882,7 @@ static void R_Q1BSP_RecursiveGetLightInfo_BSP(r_q1bsp_getlightinfo_t *info, qboo
 						continue;
 					currentmaterialflags = R_GetCurrentTexture(surface->texture)->currentmaterialflags;
 					castshadow = !(currentmaterialflags & MATERIALFLAG_NOSHADOW);
-					if (!castshadow)
+					if (!castshadow || !info->model->brush.shadowmesh)
 						continue;
 					insidebox = BoxInsideBox(surface->mins, surface->maxs, info->lightmins, info->lightmaxs);
 					for (triangleindex = 0, t = surface->num_firstshadowmeshtriangle, e = info->model->brush.shadowmesh->element3i + t * 3;triangleindex < surface->num_triangles;triangleindex++, t++, e += 3)
@@ -912,6 +912,12 @@ static void R_Q1BSP_RecursiveGetLightInfo_BSP(r_q1bsp_getlightinfo_t *info, qboo
 					addedtris = false;
 					currentmaterialflags = R_GetCurrentTexture(surface->texture)->currentmaterialflags;
 					castshadow = !(currentmaterialflags & MATERIALFLAG_NOSHADOW);
+					if (!info->model->brush.shadowmesh)
+					{
+						// no shadow mesh, we are lighting whole surface
+						info->outsurfacelist[info->outnumsurfaces++] = surfaceindex;
+						continue;
+					}
 					insidebox = BoxInsideBox(surface->mins, surface->maxs, info->lightmins, info->lightmaxs);
 					for (triangleindex = 0, t = surface->num_firstshadowmeshtriangle, e = info->model->brush.shadowmesh->element3i + t * 3;triangleindex < surface->num_triangles;triangleindex++, t++, e += 3)
 					{
