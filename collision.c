@@ -62,13 +62,13 @@ void Collision_Init (void)
 static void Collision_PrintBrushAsQHull(colbrushf_t *brush, const char *name)
 {
 	int i;
-	Con_Printf("3 %s\n%i\n", name, brush->numpoints);
+	Con_DPrintf("3 %s\n%i\n", name, brush->numpoints);
 	for (i = 0;i < brush->numpoints;i++)
-		Con_Printf("%f %f %f\n", brush->points[i].v[0], brush->points[i].v[1], brush->points[i].v[2]);
+		Con_DPrintf("%f %f %f\n", brush->points[i].v[0], brush->points[i].v[1], brush->points[i].v[2]);
 	// FIXME: optimize!
-	Con_Printf("4\n%i\n", brush->numplanes);
+	Con_DPrintf("4\n%i\n", brush->numplanes);
 	for (i = 0;i < brush->numplanes;i++)
-		Con_Printf("%f %f %f %f\n", brush->planes[i].normal[0], brush->planes[i].normal[1], brush->planes[i].normal[2], brush->planes[i].dist);
+		Con_DPrintf("%f %f %f %f\n", brush->planes[i].normal[0], brush->planes[i].normal[1], brush->planes[i].normal[2], brush->planes[i].dist);
 }
 
 static void Collision_ValidateBrush(colbrushf_t *brush)
@@ -78,7 +78,7 @@ static void Collision_ValidateBrush(colbrushf_t *brush)
 	printbrush = false;
 	if (!brush->numpoints)
 	{
-		Con_Print("Collision_ValidateBrush: brush with no points!\n");
+		Con_DPrint("Collision_ValidateBrush: brush with no points!\n");
 		printbrush = true;
 	}
 #if 0
@@ -95,7 +95,7 @@ static void Collision_ValidateBrush(colbrushf_t *brush)
 		pointswithinsufficientplanes = 0;
 		for (k = 0;k < brush->numplanes;k++)
 			if (DotProduct(brush->planes[k].normal, brush->planes[k].normal) < 0.0001f)
-				Con_Printf("Collision_ValidateBrush: plane #%i (%f %f %f %f) is degenerate\n", k, brush->planes[k].normal[0], brush->planes[k].normal[1], brush->planes[k].normal[2], brush->planes[k].dist);
+				Con_DPrintf("Collision_ValidateBrush: plane #%i (%f %f %f %f) is degenerate\n", k, brush->planes[k].normal[0], brush->planes[k].normal[1], brush->planes[k].normal[2], brush->planes[k].dist);
 		for (j = 0;j < brush->numpoints;j++)
 		{
 			pointonplanes = 0;
@@ -104,7 +104,7 @@ static void Collision_ValidateBrush(colbrushf_t *brush)
 				d = DotProduct(brush->points[j].v, brush->planes[k].normal) - brush->planes[k].dist;
 				if (d > COLLISION_PLANE_DIST_EPSILON)
 				{
-					Con_Printf("Collision_ValidateBrush: point #%i (%f %f %f) infront of plane #%i (%f %f %f %f)\n", j, brush->points[j].v[0], brush->points[j].v[1], brush->points[j].v[2], k, brush->planes[k].normal[0], brush->planes[k].normal[1], brush->planes[k].normal[2], brush->planes[k].dist);
+					Con_DPrintf("Collision_ValidateBrush: point #%i (%f %f %f) infront of plane #%i (%f %f %f %f)\n", j, brush->points[j].v[0], brush->points[j].v[1], brush->points[j].v[2], k, brush->planes[k].normal[0], brush->planes[k].normal[1], brush->planes[k].normal[2], brush->planes[k].dist);
 					printbrush = true;
 				}
 				if (fabs(d) > COLLISION_PLANE_DIST_EPSILON)
@@ -117,12 +117,12 @@ static void Collision_ValidateBrush(colbrushf_t *brush)
 		}
 		if (pointswithinsufficientplanes)
 		{
-			Con_Print("Collision_ValidateBrush: some points have insufficient planes, every point must be on at least 3 planes to form a corner.\n");
+			Con_DPrintf("Collision_ValidateBrush: some points have insufficient planes, every point must be on at least 3 planes to form a corner.\n");
 			printbrush = true;
 		}
 		if (pointsoffplanes == 0) // all points are on all planes
 		{
-			Con_Print("Collision_ValidateBrush: all points lie on all planes (degenerate, no brush volume!)\n");
+			Con_DPrintf("Collision_ValidateBrush: all points lie on all planes (degenerate, no brush volume!)\n");
 			printbrush = true;
 		}
 	}
