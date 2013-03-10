@@ -4870,6 +4870,27 @@ void R_DrawModelShadowMaps(int fbo, rtexture_t *depthtexture, rtexture_t *colort
 	// outside the usable area
 	GL_Scissor(viewport.x + r_shadow_shadowmapborder, viewport.y + r_shadow_shadowmapborder, viewport.width - 2*r_shadow_shadowmapborder, viewport.height - 2*r_shadow_shadowmapborder);
 
+	if (r_shadows_castfromworld.integer)
+	{
+		ent = r_refdef.scene.worldentity;
+		if (ent->model)
+		{
+			relativethrowdistance = r_shadows_throwdistance.value * Matrix4x4_ScaleFromMatrix(&ent->inversematrix);
+			Matrix4x4_Transform(&ent->inversematrix, shadoworigin, relativelightorigin);
+			Matrix4x4_Transform3x3(&ent->inversematrix, shadowdir, relativelightdirection);
+			Matrix4x4_Transform3x3(&ent->inversematrix, shadowforward, relativeforward);
+			Matrix4x4_Transform3x3(&ent->inversematrix, shadowright, relativeright);
+			relativeshadowmins[0] = relativelightorigin[0] - r_shadows_throwdistance.value * fabs(relativelightdirection[0]) - radius * (fabs(relativeforward[0]) + fabs(relativeright[0]));
+			relativeshadowmins[1] = relativelightorigin[1] - r_shadows_throwdistance.value * fabs(relativelightdirection[1]) - radius * (fabs(relativeforward[1]) + fabs(relativeright[1]));
+			relativeshadowmins[2] = relativelightorigin[2] - r_shadows_throwdistance.value * fabs(relativelightdirection[2]) - radius * (fabs(relativeforward[2]) + fabs(relativeright[2]));
+			relativeshadowmaxs[0] = relativelightorigin[0] + r_shadows_throwdistance.value * fabs(relativelightdirection[0]) + radius * (fabs(relativeforward[0]) + fabs(relativeright[0]));
+			relativeshadowmaxs[1] = relativelightorigin[1] + r_shadows_throwdistance.value * fabs(relativelightdirection[1]) + radius * (fabs(relativeforward[1]) + fabs(relativeright[1]));
+			relativeshadowmaxs[2] = relativelightorigin[2] + r_shadows_throwdistance.value * fabs(relativelightdirection[2]) + radius * (fabs(relativeforward[2]) + fabs(relativeright[2]));
+			RSurf_ActiveModelEntity(ent, false, false, false);
+			ent->model->DrawShadowMap(0, ent, relativelightorigin, relativelightdirection, relativethrowdistance, ent->model->nummodelsurfaces, ent->model->sortedmodelsurfaces, NULL, relativeshadowmins, relativeshadowmaxs);
+			rsurface.entity = NULL; // used only by R_GetCurrentTexture and RSurf_ActiveWorldEntity/RSurf_ActiveModelEntity
+		}
+	}
 	for (i = 0;i < r_shadow_nummodelshadows;i++)
 	{
 		ent = r_shadow_modelshadows[i];

@@ -462,6 +462,7 @@ typedef struct q3shaderinfo_s
 	qboolean dpnortlight;
 	qboolean dpshadow;
 	qboolean dpnoshadow;
+	qboolean dpnofog;
 
 	// add collisions to all triangles of the surface
 	qboolean dpmeshcollisions;

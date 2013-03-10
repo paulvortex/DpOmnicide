@@ -119,6 +119,7 @@ cvar_t r_shadows_throwdistance = {CVAR_SAVE, "r_shadows_throwdistance", "500", "
 cvar_t r_shadows_throwdirection = {CVAR_SAVE, "r_shadows_throwdirection", "0 0 -1", "override throwing direction for r_shadows 2"};
 cvar_t r_shadows_drawafterrtlighting = {CVAR_SAVE, "r_shadows_drawafterrtlighting", "0", "draw fake shadows AFTER realtime lightning is drawn. May be useful for simulating fast sunlight on large outdoor maps with only one noshadow rtlight. The price is less realistic appearance of dynamic light shadows."};
 cvar_t r_shadows_castfrombmodels = {CVAR_SAVE, "r_shadows_castfrombmodels", "0", "do cast shadows from bmodels"};
+cvar_t r_shadows_castfromworld = {CVAR_SAVE, "r_shadows_castfromworld", "0", "do cast shadows from world, only supported for shadowmapping"};
 cvar_t r_shadows_focus = {CVAR_SAVE, "r_shadows_focus", "0 0 0", "offset the shadowed area focus"};
 cvar_t r_shadows_shadowmapscale = {CVAR_SAVE, "r_shadows_shadowmapscale", "1", "increases shadowmap quality (multiply global shadowmap precision) for fake shadows. Needs shadowmapping ON."};
 cvar_t r_shadows_shadowmapbias = {CVAR_SAVE, "r_shadows_shadowmapbias", "-1", "sets shadowmap bias for fake shadows. -1 sets the value of r_shadow_shadowmapping_bias. Needs shadowmapping ON."};
@@ -2543,7 +2544,7 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 	}
 	if(!(blendfuncflags & BLENDFUNC_ALLOWS_COLORMOD))
 		colormod = dummy_colormod;
-	if(!(blendfuncflags & BLENDFUNC_ALLOWS_ANYFOG))
+	if(!(blendfuncflags & BLENDFUNC_ALLOWS_ANYFOG) || (rsurface.texture->basematerialflags & MATERIALFLAG_NOFOG))
 		permutation &= ~(SHADERPERMUTATION_FOGHEIGHTTEXTURE | SHADERPERMUTATION_FOGOUTSIDE | SHADERPERMUTATION_FOGINSIDE);
 	if(blendfuncflags & BLENDFUNC_ALLOWS_FOG_HACKALPHA)
 		permutation |= SHADERPERMUTATION_FOGALPHAHACK;
@@ -2866,6 +2867,13 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			}
 		}
 		if (r_glsl_permutation->tex_Texture_BounceGrid  >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_BounceGrid, r_shadow_bouncegridtexture);
+			
+		// VorteX: temporary hack for sun light
+		float uservec[4];
+		sscanf(r_glsl_postprocess_uservec3.string, "%f %f %f %f", &uservec[0], &uservec[1], &uservec[2], &uservec[3]);
+		Matrix4x4_Transform3x3(&rsurface.entity->inversematrix, uservec, uservec);
+		if (r_glsl_permutation->loc_UserVec3 >= 0) qglUniform4f(r_glsl_permutation->loc_UserVec3, uservec[0], uservec[1], uservec[2], uservec[3]);
+		
 		CHECKGLERROR
 		break;
 	case RENDERPATH_GL11:
@@ -4259,6 +4267,7 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_shadows_darken);
 	Cvar_RegisterVariable(&r_shadows_drawafterrtlighting);
 	Cvar_RegisterVariable(&r_shadows_castfrombmodels);
+	Cvar_RegisterVariable(&r_shadows_castfromworld);
 	Cvar_RegisterVariable(&r_shadows_throwdistance);
 	Cvar_RegisterVariable(&r_shadows_throwdirection);
 	Cvar_RegisterVariable(&r_shadows_focus);
@@ -5072,8 +5081,8 @@ static void R_View_UpdateEntityLighting (void)
 	{
 		ent = r_refdef.scene.entities[i];
 
-		// skip unseen models
-		if ((!r_refdef.viewcache.entityvisible[i] && skipunseen))
+		// skip unseen/csqc customized models
+		if ((!r_refdef.viewcache.entityvisible[i] && skipunseen) || (ent->flags & RENDER_CUSTOMIZEDMODELLIGHT))
 			continue;
 
 		// skip bsp models
@@ -5086,86 +5095,78 @@ static void R_View_UpdateEntityLighting (void)
 			continue;
 		}
 		
-		if (ent->flags & RENDER_CUSTOMIZEDMODELLIGHT)
+		// fetch the lighting from the worldmodel data
+		VectorClear(ent->modellight_ambient);
+		VectorClear(ent->modellight_diffuse);
+		VectorClear(tempdiffusenormal);
+		if (ent->flags & RENDER_LIGHT)
 		{
-			// aleady updated by CSQC
-			// TODO: force modellight on BSP models in this case?
-			VectorCopy(ent->modellight_lightdir, tempdiffusenormal); 
-		}
-		else
-		{
-			// fetch the lighting from the worldmodel data
-			VectorClear(ent->modellight_ambient);
-			VectorClear(ent->modellight_diffuse);
-			VectorClear(tempdiffusenormal);
-			if (ent->flags & RENDER_LIGHT)
+			vec3_t org;
+			Matrix4x4_OriginFromMatrix(&ent->matrix, org);
+
+			// complete lightning for lit sprites
+			// todo: make a EF_ field so small ents could be lit purely by modellight and skipping real rtlight pass (like EF_NORTLIGHT)?
+			if (ent->model->type == mod_sprite && !(ent->model->data_textures[0].basematerialflags & MATERIALFLAG_FULLBRIGHT))
 			{
-				vec3_t org;
-				Matrix4x4_OriginFromMatrix(&ent->matrix, org);
+				if (ent->model->sprite.sprnum_type == SPR_OVERHEAD) // apply offset for overhead sprites
+					org[2] = org[2] + r_overheadsprites_pushback.value;
+				R_LightPoint(ent->modellight_ambient, org, LP_LIGHTMAP | LP_RTWORLD | LP_DYNLIGHT);
+			}
+			else
+				R_CompleteLightPoint(ent->modellight_ambient, ent->modellight_diffuse, tempdiffusenormal, org, LP_LIGHTMAP);
 
-				// complete lightning for lit sprites
-				// todo: make a EF_ field so small ents could be lit purely by modellight and skipping real rtlight pass (like EF_NORTLIGHT)?
-				if (ent->model->type == mod_sprite && !(ent->model->data_textures[0].basematerialflags & MATERIALFLAG_FULLBRIGHT))
+			if(ent->flags & RENDER_EQUALIZE)
+			{
+				// first fix up ambient lighting...
+				if(r_equalize_entities_minambient.value > 0)
 				{
-					if (ent->model->sprite.sprnum_type == SPR_OVERHEAD) // apply offset for overhead sprites
-						org[2] = org[2] + r_overheadsprites_pushback.value;
-					R_LightPoint(ent->modellight_ambient, org, LP_LIGHTMAP | LP_RTWORLD | LP_DYNLIGHT);
-				}
-				else
-					R_CompleteLightPoint(ent->modellight_ambient, ent->modellight_diffuse, tempdiffusenormal, org, LP_LIGHTMAP);
-
-				if(ent->flags & RENDER_EQUALIZE)
-				{
-					// first fix up ambient lighting...
-					if(r_equalize_entities_minambient.value > 0)
+					fd = 0.299f * ent->modellight_diffuse[0] + 0.587f * ent->modellight_diffuse[1] + 0.114f * ent->modellight_diffuse[2];
+					if(fd > 0)
 					{
-						fd = 0.299f * ent->modellight_diffuse[0] + 0.587f * ent->modellight_diffuse[1] + 0.114f * ent->modellight_diffuse[2];
-						if(fd > 0)
+						fa = (0.299f * ent->modellight_ambient[0] + 0.587f * ent->modellight_ambient[1] + 0.114f * ent->modellight_ambient[2]);
+						if(fa < r_equalize_entities_minambient.value * fd)
 						{
-							fa = (0.299f * ent->modellight_ambient[0] + 0.587f * ent->modellight_ambient[1] + 0.114f * ent->modellight_ambient[2]);
-							if(fa < r_equalize_entities_minambient.value * fd)
-							{
-								// solve:
-								//   fa'/fd' = minambient
-								//   fa'+0.25*fd' = fa+0.25*fd
-								//   ...
-								//   fa' = fd' * minambient
-								//   fd'*(0.25+minambient) = fa+0.25*fd
-								//   ...
-								//   fd' = (fa+0.25*fd) * 1 / (0.25+minambient)
-								//   fa' = (fa+0.25*fd) * minambient / (0.25+minambient)
-								//   ...
-								fdd = (fa + 0.25f * fd) / (0.25f + r_equalize_entities_minambient.value);
-								f = fdd / fd; // f>0 because all this is additive; f<1 because fdd<fd because this follows from fa < r_equalize_entities_minambient.value * fd
-								VectorMA(ent->modellight_ambient, (1-f)*0.25f, ent->modellight_diffuse, ent->modellight_ambient);
-								VectorScale(ent->modellight_diffuse, f, ent->modellight_diffuse);
-							}
+							// solve:
+							//   fa'/fd' = minambient
+							//   fa'+0.25*fd' = fa+0.25*fd
+							//   ...
+							//   fa' = fd' * minambient
+							//   fd'*(0.25+minambient) = fa+0.25*fd
+							//   ...
+							//   fd' = (fa+0.25*fd) * 1 / (0.25+minambient)
+							//   fa' = (fa+0.25*fd) * minambient / (0.25+minambient)
+							//   ...
+							fdd = (fa + 0.25f * fd) / (0.25f + r_equalize_entities_minambient.value);
+							f = fdd / fd; // f>0 because all this is additive; f<1 because fdd<fd because this follows from fa < r_equalize_entities_minambient.value * fd
+							VectorMA(ent->modellight_ambient, (1-f)*0.25f, ent->modellight_diffuse, ent->modellight_ambient);
+							VectorScale(ent->modellight_diffuse, f, ent->modellight_diffuse);
 						}
 					}
+				}
 
-					if(r_equalize_entities_to.value > 0 && r_equalize_entities_by.value != 0)
+				if(r_equalize_entities_to.value > 0 && r_equalize_entities_by.value != 0)
+				{
+					fa = 0.299f * ent->modellight_ambient[0] + 0.587f * ent->modellight_ambient[1] + 0.114f * ent->modellight_ambient[2];
+					fd = 0.299f * ent->modellight_diffuse[0] + 0.587f * ent->modellight_diffuse[1] + 0.114f * ent->modellight_diffuse[2];
+					f = fa + 0.25 * fd;
+					if(f > 0)
 					{
-						fa = 0.299f * ent->modellight_ambient[0] + 0.587f * ent->modellight_ambient[1] + 0.114f * ent->modellight_ambient[2];
-						fd = 0.299f * ent->modellight_diffuse[0] + 0.587f * ent->modellight_diffuse[1] + 0.114f * ent->modellight_diffuse[2];
-						f = fa + 0.25 * fd;
-						if(f > 0)
-						{
-							// adjust brightness and saturation to target
-							avg[0] = avg[1] = avg[2] = fa / f;
-							VectorLerp(ent->modellight_ambient, r_equalize_entities_by.value, avg, ent->modellight_ambient);
-							avg[0] = avg[1] = avg[2] = fd / f;
-							VectorLerp(ent->modellight_diffuse, r_equalize_entities_by.value, avg, ent->modellight_diffuse);
-						}
+						// adjust brightness and saturation to target
+						avg[0] = avg[1] = avg[2] = fa / f;
+						VectorLerp(ent->modellight_ambient, r_equalize_entities_by.value, avg, ent->modellight_ambient);
+						avg[0] = avg[1] = avg[2] = fd / f;
+						VectorLerp(ent->modellight_diffuse, r_equalize_entities_by.value, avg, ent->modellight_diffuse);
 					}
 				}
 			}
-			else // highly rare
-				VectorSet(ent->modellight_ambient, 1, 1, 1);
 		}
+		else // highly rare
+			VectorSet(ent->modellight_ambient, 1, 1, 1);
 
 		// move the light direction into modelspace coordinates for lighting code
+		VectorCopy(tempdiffusenormal, ent->modellight_lightdir);
 		Matrix4x4_Transform3x3(&ent->inversematrix, tempdiffusenormal, ent->modellight_lightdir);
-		if(VectorLength2(ent->modellight_lightdir) == 0)
+		if (VectorLength2(ent->modellight_lightdir) == 0)
 			VectorSet(ent->modellight_lightdir, 0, 0, 1); // have to set SOME valid vector here
 		VectorNormalize(ent->modellight_lightdir);
 	}
@@ -8279,8 +8280,8 @@ texture_t *R_GetCurrentTexture(texture_t *t)
 		{
 			if (r_shadow_glossintensity.value > 0)
 			{
-				t->glosstexture = t->currentskinframe->gloss ? t->currentskinframe->gloss : r_texture_white;
-				t->backgroundglosstexture = (t->backgroundcurrentskinframe && t->backgroundcurrentskinframe->gloss) ? t->backgroundcurrentskinframe->gloss : r_texture_white;
+				t->glosstexture = t->currentskinframe->gloss ? t->currentskinframe->gloss : r_texture_black; // VorteX: was r_texture_white
+				t->backgroundglosstexture = (t->backgroundcurrentskinframe && t->backgroundcurrentskinframe->gloss) ? t->backgroundcurrentskinframe->gloss : r_texture_black; // VorteX: was r_texture_white
 				t->specularscale = r_shadow_glossintensity.value;
 			}
 		}

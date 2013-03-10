@@ -2164,6 +2164,8 @@ void Mod_LoadQ3Shaders(void)
 					shader.dpnoshadow = true;
 				else if (!strcasecmp(parameter[0], "dpnortlight"))
 					shader.dpnortlight = true;
+				else if (!strcasecmp(parameter[0], "dpnofog"))
+					shader.dpnofog = true;
 				else if (!strcasecmp(parameter[0], "dpreflectcube"))
 					strlcpy(shader.dpreflectcube, parameter[1], sizeof(shader.dpreflectcube));
 				else if (!strcasecmp(parameter[0], "dpmeshcollisions"))
@@ -2600,6 +2602,8 @@ nothing                GL_ZERO GL_ONE
 			texture->basematerialflags |= MATERIALFLAG_NORTLIGHT;
 		if (shader->vertexalpha)
 			texture->basematerialflags |= MATERIALFLAG_ALPHAGEN_VERTEX;
+		if (shader->dpnofog)
+			texture->basematerialflags |= MATERIALFLAG_NOFOG;
 		memcpy(texture->deforms, shader->deforms, sizeof(texture->deforms));
 		texture->reflectmin = shader->reflectmin;
 		texture->reflectmax = shader->reflectmax;
