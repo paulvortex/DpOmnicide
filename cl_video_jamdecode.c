@@ -150,9 +150,35 @@ void *jam_open(clvideo_t *video, char *filename, const char **errorstring)
 	if (wavename)
 	{
 		sfx_t* sfx;
+
 		FS_StripExtension(filename, wavename, namelen);
-		strlcat(wavename, ".wav", namelen);
-		sfx = S_PrecacheSound(wavename, false, false);
+		if (gamemode == GAME_BLOODOMNICIDE)
+		{
+			// try to load translated file
+			char overridename[MAX_QPATH];
+			cvar_t *langcvar;
+
+			langcvar = Cvar_FindVar("language");
+			if (!langcvar)
+				goto loadwav;
+			dpsnprintf(overridename, sizeof(overridename), "locale/%s/%s.ogg", langcvar->string, wavename);
+			if (FS_FileExists(overridename))
+				sfx = S_PrecacheSound(overridename, false, false);
+			else
+			{
+				dpsnprintf(overridename, sizeof(overridename), "locale/%s/%s.wav", langcvar->string, wavename);
+				if (FS_FileExists(overridename))
+					sfx = S_PrecacheSound(overridename, false, false);
+				else
+					goto loadwav;
+			}
+		}
+		else
+		{
+loadwav:
+			strlcat(wavename, ".wav", namelen);
+			sfx = S_PrecacheSound(wavename, false, false);
+		}
 		if (sfx != NULL)
 			s->sndchan = S_StartSound (-1, 0, sfx, vec3_origin, 1.0f, 0);
 		else
@@ -162,6 +188,11 @@ void *jam_open(clvideo_t *video, char *filename, const char **errorstring)
 
 	return s;
 }
+
+
+
+
+
 
 // closes a stream
 void jam_close(void *stream)

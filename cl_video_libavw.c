@@ -331,10 +331,38 @@ static void *LibAvW_OpenVideo(clvideo_t *video, char *filename, const char **err
 	wavename = (char *)Z_Malloc(len);
 	if (wavename)
 	{
-		FS_StripExtension(filename, wavename, len-1);
-		strlcat(wavename, ".wav", len);
-		s->sfx = S_PrecacheSound(wavename, false, false);
-		s->sndchan = -1;
+		FS_StripExtension(filename, wavename, len);
+		if (gamemode == GAME_BLOODOMNICIDE)
+		{
+			// try to load translated file
+			char overridename[MAX_QPATH];
+			cvar_t *langcvar;
+
+			langcvar = Cvar_FindVar("language");
+			if (!langcvar)
+				goto loadwav;
+			dpsnprintf(overridename, sizeof(overridename), "locale/%s/%s.ogg", langcvar->string, wavename);
+			if (FS_FileExists(overridename))
+				s->sfx = S_PrecacheSound(overridename, false, false);
+			else
+			{
+				dpsnprintf(overridename, sizeof(overridename), "locale/%s/%s.wav", langcvar->string, wavename);
+				if (FS_FileExists(overridename))
+					s->sfx = S_PrecacheSound(overridename, false, false);
+				else
+					goto loadwav;
+			}
+		}
+		else
+		{
+loadwav:
+			strlcat(wavename, ".wav", len);
+			s->sfx = S_PrecacheSound(wavename, false, false);
+		}
+		if (s->sfx != NULL)
+			s->sndchan = S_StartSound (-1, 0, s->sfx, vec3_origin, 1.0f, 0);
+		else
+			s->sndchan = -1;
 		Z_Free(wavename);
 	}
 	return s;
