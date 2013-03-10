@@ -132,7 +132,7 @@ extern char engineversion[128];
 
 #define	NET_MAXMESSAGE			65536 ///< max reliable packet size (sent as multiple fragments of MAX_PACKETFRAGMENT)
 #define	MAX_PACKETFRAGMENT		1024 ///< max length of packet fragment
-#define	MAX_EDICTS				32768 ///< max number of objects in game world at once (32768 protocol limit)
+#define	MAX_EDICTS				131072 ///< max number of objects in game world at once (32768 protocol limit)
 #define	MAX_MODELS				8192 ///< max number of models loaded at once (including during level transitions)
 #define	MAX_SOUNDS				4096 ///< max number of sounds loaded at once
 #define	MAX_LIGHTSTYLES			256 ///< max flickering light styles in level (note: affects savegame format)
