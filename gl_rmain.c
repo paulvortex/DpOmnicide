@@ -220,6 +220,8 @@ cvar_t r_hdr_irisadaptation_fade_up = {CVAR_SAVE, "r_hdr_irisadaptation_fade_up"
 cvar_t r_hdr_irisadaptation_fade_down = {CVAR_SAVE, "r_hdr_irisadaptation_fade_down", "0.5", "fade rate at which value adjusts to brightness"};
 cvar_t r_hdr_irisadaptation_radius = {CVAR_SAVE, "r_hdr_irisadaptation_radius", "15", "lighting within this many units of the eye is averaged"};
 
+cvar_t r_tcmod_normalize = {CVAR_SAVE, "r_tcmod_normalize", "2", "normalizes time input for tcMod to increases precision with big time values. A value of 0 disables normalization. A value of 1 enables normalization for one-tcmod textures, 2 enables normalization for all tcmods"};
+
 cvar_t r_smoothnormals_areaweighting = {0, "r_smoothnormals_areaweighting", "1", "uses significantly faster (and supposedly higher quality) area-weighted vertex normals and tangent vectors rather than summing normalized triangle normals and tangents"};
 
 cvar_t developer_texturelogging = {0, "developer_texturelogging", "0", "produces a textures.log file containing names of skins and map textures the engine tried to load"};
@@ -4353,6 +4355,7 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_hdr_irisadaptation_fade_down);
 	Cvar_RegisterVariable(&r_hdr_irisadaptation_radius);
 	Cvar_RegisterVariable(&r_smoothnormals_areaweighting);
+	Cvar_RegisterVariable(&r_tcmod_normalize);
 	Cvar_RegisterVariable(&developer_texturelogging);
 	Cvar_RegisterVariable(&gl_lightmaps);
 	Cvar_RegisterVariable(&r_test);
@@ -8011,7 +8014,7 @@ static float R_EvaluateQ3WaveFunc(q3wavefunc_t func, const float *parms)
 	return (float) f;
 }
 
-static void R_tcMod_ApplyToMatrix(matrix4x4_t *texmatrix, q3shaderinfo_layer_tcmod_t *tcmod, int currentmaterialflags)
+static void R_tcMod_ApplyToMatrix(matrix4x4_t *texmatrix, q3shaderinfo_layer_tcmod_t *tcmod, int currentmaterialflags, int texture_have_one_tcmod)
 {
 	int w, h, idx;
 	double f;
@@ -8035,17 +8038,22 @@ static void R_tcMod_ApplyToMatrix(matrix4x4_t *texmatrix, q3shaderinfo_layer_tcm
 		case Q3TCMOD_ROTATE:
 			f = tcmod->parms[0] * rsurface.shadertime;
 			Matrix4x4_CreateTranslate(&matrix, 0.5, 0.5, 0);
-			Matrix4x4_ConcatRotate(&matrix, (f / 360 - floor(f / 360)) * 360, 0, 0, 1);
+			if (r_tcmod_normalize.integer == 2 || (r_tcmod_normalize.integer == 1 && texture_have_one_tcmod))
+				Matrix4x4_ConcatRotate(&matrix, (f / 360 - floor(f / 360)) * 360, 0, 0, 1);
+			else
+				Matrix4x4_ConcatRotate(&matrix, f, 0, 0, 1);
 			Matrix4x4_ConcatTranslate(&matrix, -0.5, -0.5, 0);
 			break;
 		case Q3TCMOD_SCALE:
 			Matrix4x4_CreateScale3(&matrix, tcmod->parms[0], tcmod->parms[1], 1);
 			break;
 		case Q3TCMOD_SCROLL:
-			// extra care is needed because of precision breakdown with large values of time
 			offsetd[0] = tcmod->parms[0] * rsurface.shadertime;
 			offsetd[1] = tcmod->parms[1] * rsurface.shadertime;
-			Matrix4x4_CreateTranslate(&matrix, offsetd[0] - floor(offsetd[0]), offsetd[1] - floor(offsetd[1]), 0);
+			if (r_tcmod_normalize.integer == 2 || (r_tcmod_normalize.integer == 1 && texture_have_one_tcmod))
+				Matrix4x4_CreateTranslate(&matrix, offsetd[0] - floor(offsetd[0]), offsetd[1] - floor(offsetd[1]), 0);
+			else
+				Matrix4x4_CreateTranslate(&matrix, offsetd[0], offsetd[1], 0);
 			break;
 		case Q3TCMOD_PAGE: // poor man's animmap (to store animations into a single file, useful for HTTP downloaded textures)
 			w = (int) tcmod->parms[0];
@@ -8231,9 +8239,9 @@ texture_t *R_GetCurrentTexture(texture_t *t)
 	}
 
 	for (i = 0, tcmod = t->tcmods;i < Q3MAXTCMODS && tcmod->tcmod;i++, tcmod++)
-		R_tcMod_ApplyToMatrix(&t->currenttexmatrix, tcmod, t->currentmaterialflags);
+		R_tcMod_ApplyToMatrix(&t->currenttexmatrix, tcmod, t->currentmaterialflags, t->tcmods[1].tcmod);
 	for (i = 0, tcmod = t->backgroundtcmods;i < Q3MAXTCMODS && tcmod->tcmod;i++, tcmod++)
-		R_tcMod_ApplyToMatrix(&t->currentbackgroundtexmatrix, tcmod, t->currentmaterialflags);
+		R_tcMod_ApplyToMatrix(&t->currentbackgroundtexmatrix, tcmod, t->currentmaterialflags, t->backgroundtcmods[1].tcmod);
 
 	t->colormapping = VectorLength2(rsurface.colormap_pantscolor) + VectorLength2(rsurface.colormap_shirtcolor) >= (1.0f / 1048576.0f);
 	if (t->currentskinframe->qpixels)
