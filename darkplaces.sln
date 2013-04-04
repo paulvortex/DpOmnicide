@@ -1,8 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 10.00
 # Visual Studio 2008
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "darkplaces-wgl", "darkplaces-wgl.vcproj", "{6E3D4311-BB84-4EB7-8C6C-10AA3D249C28}"
-EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "darkplaces-sdl", "darkplaces-sdl.vcproj", "{7470C8B3-FCA7-42D3-9909-5F9E735C7C51}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "darkplaces-dedicated", "darkplaces-dedicated.vcproj", "{389AE334-D907-4069-90B3-F0551B3EFDE9}"
@@ -17,10 +15,6 @@ Global
 		Release|Win32 = Release|Win32
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{6E3D4311-BB84-4EB7-8C6C-10AA3D249C28}.Debug|Win32.ActiveCfg = Debug|Win32
-		{6E3D4311-BB84-4EB7-8C6C-10AA3D249C28}.Debug|Win32.Build.0 = Debug|Win32
-		{6E3D4311-BB84-4EB7-8C6C-10AA3D249C28}.Release|Win32.ActiveCfg = Release|Win32
-		{6E3D4311-BB84-4EB7-8C6C-10AA3D249C28}.Release|Win32.Build.0 = Release|Win32
 		{7470C8B3-FCA7-42D3-9909-5F9E735C7C51}.Debug|Win32.ActiveCfg = Debug|Win32
 		{7470C8B3-FCA7-42D3-9909-5F9E735C7C51}.Debug|Win32.Build.0 = Debug|Win32
 		{7470C8B3-FCA7-42D3-9909-5F9E735C7C51}.Release|Win32.ActiveCfg = Release|Win32
