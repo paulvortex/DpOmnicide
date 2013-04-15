@@ -4431,8 +4431,8 @@ int R_CullBox(const vec3_t mins, const vec3_t maxs)
 {
 	int i;
 	mplane_t *p;
-	if (r_trippy.integer)
-		return false;
+	if (r_trippy.integer || !r_refdef.view.useperspective)
+		return false; // VorteX: frustum planes is broken for useperspective = 0, remove this code once it will be fixed
 	for (i = 0;i < r_refdef.view.numfrustumplanes;i++)
 	{
 		// skip nearclip plane, it often culls portals when you are very close, and is almost never useful
@@ -4483,8 +4483,8 @@ int R_CullBoxCustomPlanes(const vec3_t mins, const vec3_t maxs, int numplanes, c
 {
 	int i;
 	const mplane_t *p;
-	if (r_trippy.integer)
-		return false;
+	if (r_trippy.integer || !r_refdef.view.useperspective)
+		return false; // VorteX: frustum planes is broken for useperspective = 0, remove this code once it will be fixed
 	for (i = 0;i < numplanes;i++)
 	{
 		p = planes + i;
