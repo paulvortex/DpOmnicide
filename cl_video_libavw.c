@@ -359,10 +359,12 @@ loadwav:
 			strlcat(wavename, ".wav", len);
 			s->sfx = S_PrecacheSound(wavename, false, false);
 		}
+		/*
 		if (s->sfx != NULL)
 			s->sndchan = S_StartSound (-1, 0, s->sfx, vec3_origin, 1.0f, 0);
 		else
 			s->sndchan = -1;
+		*/
 		Z_Free(wavename);
 	}
 	return s;
@@ -371,13 +373,13 @@ loadwav:
 static void libavw_message(int level, const char *message)
 {
 	if (level == LIBAVW_PRINT_WARNING)
-		Con_Printf("LibAvcodec warning: %s\n", message);
+		Con_Printf("^3LibAvcodec warning: %s", message);
 	else if (level == LIBAVW_PRINT_ERROR)
-		Con_Printf("LibAvcodec error: %s\n", message);
+		Con_Printf("^1LibAvcodec error: %s", message);
 	else if (level == LIBAVW_PRINT_FATAL)
-		Con_Printf("LibAvcodec fatal error: %s\n", message);
+		Con_Printf("^1LibAvcodec fatal error: %s", message);
 	else
-		Con_Printf("LibAvcodec panic: %s\n", message);
+		Con_Printf("LibAvcodec: %s", message);
 }
 
 static qboolean LibAvW_OpenLibrary(void)
