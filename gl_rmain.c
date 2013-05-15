@@ -184,6 +184,11 @@ cvar_t r_glsl_postprocess_uservec2_enable = {CVAR_SAVE, "r_glsl_postprocess_user
 cvar_t r_glsl_postprocess_uservec3_enable = {CVAR_SAVE, "r_glsl_postprocess_uservec3_enable", "1", "enables postprocessing uservec3 usage, creates USERVEC1 define (only useful if default.glsl has been customized)"};
 cvar_t r_glsl_postprocess_uservec4_enable = {CVAR_SAVE, "r_glsl_postprocess_uservec4_enable", "1", "enables postprocessing uservec4 usage, creates USERVEC1 define (only useful if default.glsl has been customized)"};
 
+cvar_t r_sunlight = {CVAR_SAVE, "r_sunlight", "0", "Enables sunlight GLSL rendering."};
+cvar_t r_sunlight_dir = {CVAR_SAVE, "r_sunlight_dir", "0 0 1", "Sun light direction"};
+cvar_t r_sunlight_color = {CVAR_SAVE, "r_sunlight_color", "1 1 1", "Sun light rgb color"};
+cvar_t r_sunlight_intensity = {CVAR_SAVE, "r_sunlight_intensity", "1", "Sun light intensity mod"};
+
 cvar_t r_water = {CVAR_SAVE, "r_water", "0", "whether to use reflections and refraction on water surfaces (note: r_wateralpha must be set below 1)"};
 cvar_t r_water_clippingplanebias = {CVAR_SAVE, "r_water_clippingplanebias", "1", "a rather technical setting which avoids black pixels around water edges"};
 cvar_t r_water_resolutionmultiplier = {CVAR_SAVE, "r_water_resolutionmultiplier", "0.5", "multiplier for screen resolution when rendering refracted/reflected scenes, 1 is full quality, lower values are faster"};
@@ -857,6 +862,8 @@ typedef struct r_glsl_permutation_s
 	int loc_NormalmapScrollBlend;
 	int loc_BounceGridMatrix;
 	int loc_BounceGridIntensity;
+	int loc_SunDir; // vortex: Blood Omnicide sunlight
+	int loc_SunColor;
 	/// uniform block bindings
 	int ubibind_Skeletal_Transform12_UniformBlock;
 	/// uniform block indices
@@ -884,6 +891,7 @@ enum
 	SHADERSTATICPARM_SHADOWSAMPLER = 10, ///< sampler
 	SHADERSTATICPARM_CELSHADING = 11, ///< celshading (alternative diffuse and specular math)
 	SHADERSTATICPARM_CELOUTLINES = 12, ///< celoutline (depth buffer analysis to produce outlines)
+	SHADERSTATICPARM_SUNLIGHT = 13 // Blood Omnicide sunlight
 };
 #define SHADERSTATICPARMS_COUNT 13
 
@@ -932,6 +940,8 @@ qboolean R_CompileShader_CheckStaticParms(void)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_CELSHADING);
 	if (r_celoutlines.integer)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_CELOUTLINES);
+	if (r_sunlight.integer)
+		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_SUNLIGHT);
 
 	return memcmp(r_compileshader_staticparms, r_compileshader_staticparms_save, sizeof(r_compileshader_staticparms)) != 0;
 }
@@ -959,6 +969,7 @@ static void R_CompileShader_AddStaticParms(unsigned int mode, unsigned int permu
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_SHADOWSAMPLER, "USESHADOWSAMPLER");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_CELSHADING, "USECELSHADING");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_CELOUTLINES, "USECELOUTLINES");
+	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_SUNLIGHT, "USESUNLIGHT");
 }
 
 /// information about each possible shader permutation
@@ -1252,6 +1263,9 @@ static void R_GLSL_CompilePermutation(r_glsl_permutation_t *p, unsigned int mode
 		p->loc_NormalmapScrollBlend       = qglGetUniformLocation(p->program, "NormalmapScrollBlend");
 		p->loc_BounceGridMatrix           = qglGetUniformLocation(p->program, "BounceGridMatrix");
 		p->loc_BounceGridIntensity        = qglGetUniformLocation(p->program, "BounceGridIntensity");
+		// vortex: Blood Omnicide sunlight
+		p->loc_SunDir                     = qglGetUniformLocation(p->program, "SunlightDir");
+		p->loc_SunColor                   = qglGetUniformLocation(p->program, "SunlightColor");
 		// initialize the samplers to refer to the texture units we use
 		p->tex_Texture_First = -1;
 		p->tex_Texture_Second = -1;
@@ -2869,13 +2883,14 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			}
 		}
 		if (r_glsl_permutation->tex_Texture_BounceGrid  >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_BounceGrid, r_shadow_bouncegridtexture);
-			
-		// VorteX: temporary hack for sun light
-		float uservec[4];
-		sscanf(r_glsl_postprocess_uservec3.string, "%f %f %f %f", &uservec[0], &uservec[1], &uservec[2], &uservec[3]);
-		Matrix4x4_Transform3x3(&rsurface.entity->inversematrix, uservec, uservec);
-		if (r_glsl_permutation->loc_UserVec3 >= 0) qglUniform4f(r_glsl_permutation->loc_UserVec3, uservec[0], uservec[1], uservec[2], uservec[3]);
-		
+		// VorteX: Blood Omnicide sun light
+		if (r_sunlight.integer)
+		{
+			float sundir[3];
+			Matrix4x4_Transform3x3(&rsurface.entity->inversematrix, r_sunlight_dir.vector, sundir);
+			if (r_glsl_permutation->loc_SunDir >= 0) qglUniform4f(r_glsl_permutation->loc_SunDir, sundir[0], sundir[1], sundir[2], 0);
+			if (r_glsl_permutation->loc_SunColor >= 0) qglUniform4f(r_glsl_permutation->loc_SunColor, r_sunlight_color.vector[0], r_sunlight_color.vector[1], r_sunlight_color.vector[2], r_sunlight_intensity.value);
+		}
 		CHECKGLERROR
 		break;
 	case RENDERPATH_GL11:
@@ -4319,9 +4334,12 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_glsl_postprocess_uservec2_enable);
 	Cvar_RegisterVariable(&r_glsl_postprocess_uservec3_enable);
 	Cvar_RegisterVariable(&r_glsl_postprocess_uservec4_enable);
+	Cvar_RegisterVariable(&r_sunlight);
+	Cvar_RegisterVariable(&r_sunlight_dir);
+	Cvar_RegisterVariable(&r_sunlight_color);
+	Cvar_RegisterVariable(&r_sunlight_intensity);
 	Cvar_RegisterVariable(&r_celshading);
 	Cvar_RegisterVariable(&r_celoutlines);
-
 	Cvar_RegisterVariable(&r_water);
 	Cvar_RegisterVariable(&r_water_resolutionmultiplier);
 	Cvar_RegisterVariable(&r_water_clippingplanebias);
@@ -5788,10 +5806,10 @@ static void R_Water_StartFrame(void)
 	}
 	else
 	{
-		for (texturewidth   = 1;texturewidth   < waterwidth ;texturewidth   *= 2);
-		for (textureheight  = 1;textureheight  < waterheight;textureheight  *= 2);
-		for (camerawidth    = 1;camerawidth   <= waterwidth; camerawidth    *= 2); camerawidth  /= 2;
-		for (cameraheight   = 1;cameraheight  <= waterheight;cameraheight   *= 2); cameraheight /= 2;
+		for (texturewidth   = 1;texturewidth     <  waterwidth ;texturewidth   *= 2);
+		for (textureheight  = 1;textureheight    <  waterheight;textureheight  *= 2);
+		for (camerawidth    = 1;camerawidth  * 2 <= waterwidth ;camerawidth    *= 2);
+		for (cameraheight   = 1;cameraheight * 2 <= waterheight;cameraheight   *= 2);
 	}
 
 	// allocate textures as needed
