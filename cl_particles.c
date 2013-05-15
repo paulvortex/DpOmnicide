@@ -919,6 +919,7 @@ static void CL_ParticleEffect_Fallback(int effectnameindex, float count, const v
 	vec3_t center;
 	matrix4x4_t tempmatrix;
 	particle_t *part;
+
 	VectorLerp(originmins, 0.5, originmaxs, center);
 	Matrix4x4_CreateTranslate(&tempmatrix, center[0], center[1], center[2]);
 	if (effectnameindex == EFFECT_SVC_PARTICLE)
@@ -1210,6 +1211,8 @@ static void CL_ParticleEffect_Fallback(int effectnameindex, float count, const v
 	}
 	else if (effectnameindex == EFFECT_EF_FLAME)
 	{
+		if (!spawnparticles)
+			count = 0;
 		count *= 300 * cl_particles_quality.value;
 		while (count-- > 0)
 			CL_NewParticle(center, pt_smoke, 0x6f0f00, 0xe3974f, tex_particle, 4, 0, lhrandom(64, 128), 384, -1, 0, lhrandom(originmins[0], originmaxs[0]), lhrandom(originmins[1], originmaxs[1]), lhrandom(originmins[2], originmaxs[2]), lhrandom(velocitymins[0], velocitymaxs[0]), lhrandom(velocitymins[1], velocitymaxs[1]), lhrandom(velocitymins[2], velocitymaxs[2]), 1, 4, 16, 128, true, 0, 1, PBLEND_ADD, PARTICLE_BILLBOARD, -1, -1, -1, 1, 1, 0, 0, NULL);
@@ -1217,6 +1220,8 @@ static void CL_ParticleEffect_Fallback(int effectnameindex, float count, const v
 	}
 	else if (effectnameindex == EFFECT_EF_STARDUST)
 	{
+		if (!spawnparticles)
+			count = 0;
 		count *= 200 * cl_particles_quality.value;
 		while (count-- > 0)
 			CL_NewParticle(center, pt_static, 0x903010, 0xFFD030, tex_particle, 4, 0, lhrandom(64, 128), 128, 1, 0, lhrandom(originmins[0], originmaxs[0]), lhrandom(originmins[1], originmaxs[1]), lhrandom(originmins[2], originmaxs[2]), lhrandom(velocitymins[0], velocitymaxs[0]), lhrandom(velocitymins[1], velocitymaxs[1]), lhrandom(velocitymins[2], velocitymaxs[2]), 0.2, 0.8, 16, 128, true, 0, 1, PBLEND_ADD, PARTICLE_BILLBOARD, -1, -1, -1, 1, 1, 0, 0, NULL);
@@ -1643,7 +1648,7 @@ CL_EntityParticles
 */
 void CL_EntityParticles (const entity_t *ent)
 {
-	int i;
+	int i, j;
 	vec_t pitch, yaw, dist = 64, beamlength = 16;
 	vec3_t org, v;
 	static vec3_t avelocities[NUMVERTEXNORMALS];
@@ -1653,8 +1658,9 @@ void CL_EntityParticles (const entity_t *ent)
 	Matrix4x4_OriginFromMatrix(&ent->render.matrix, org);
 
 	if (!avelocities[0][0])
-		for (i = 0;i < NUMVERTEXNORMALS * 3;i++)
-			avelocities[0][i] = lhrandom(0, 2.55);
+		for (i = 0;i < NUMVERTEXNORMALS;i++)
+			for (j = 0;j < 3;j++)
+				avelocities[i][j] = lhrandom(0, 2.55);
 
 	for (i = 0;i < NUMVERTEXNORMALS;i++)
 	{

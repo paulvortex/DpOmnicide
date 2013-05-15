@@ -3140,7 +3140,6 @@ void World_Physics_Frame(world_t *world, double frametime, double gravity)
 
 typedef struct
 {
-	qboolean x;
 } recastMesh_t;
 
 #ifdef USERECAST

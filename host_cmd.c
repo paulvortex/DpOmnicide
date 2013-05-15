@@ -642,7 +642,6 @@ void Host_Savegame_to(prvm_prog_t *prog, const char *name)
 
 	// darkplaces extension - save buffers
 	numbuffers = Mem_ExpandableArray_IndexRange(&prog->stringbuffersarray);
-	Con_Printf("Writing buffers from %i to %i.\n", 0, numbuffers);
 	for (i = 0; i < numbuffers; i++)
 	{
 		prvm_stringbuffer_t *stringbuffer = (prvm_stringbuffer_t*) Mem_ExpandableArray_RecordAtIndex(&prog->stringbuffersarray, i);
