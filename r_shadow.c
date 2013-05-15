@@ -4712,7 +4712,7 @@ void R_Shadow_PrepareModelShadows(void)
 	scale = r_shadow_shadowmapping_precision.value * r_shadows_shadowmapscale.value;
 	radius = 0.5f * size / scale;
 
-	Math_atov(r_shadows_throwdirection.string, prvmshadowdir);
+	VectorCopy(r_shadows_throwdirection.vector, prvmshadowdir);
 	VectorCopy(prvmshadowdir, shadowdir);
 	VectorNormalize(shadowdir);
 	dot1 = DotProduct(r_refdef.view.forward, shadowdir);
@@ -4723,7 +4723,7 @@ void R_Shadow_PrepareModelShadows(void)
 		VectorMA(r_refdef.view.up, -dot2, shadowdir, shadowforward);
 	VectorNormalize(shadowforward);
 	CrossProduct(shadowdir, shadowforward, shadowright);
-	Math_atov(r_shadows_focus.string, prvmshadowfocus);
+	VectorCopy(r_shadows_focus.vector, prvmshadowfocus);
 	VectorCopy(prvmshadowfocus, shadowfocus);
 	VectorM(shadowfocus[0], r_refdef.view.right, shadoworigin);
 	VectorMA(shadoworigin, shadowfocus[1], r_refdef.view.up, shadoworigin);
@@ -4817,10 +4817,10 @@ void R_DrawModelShadowMaps(int fbo, rtexture_t *depthtexture, rtexture_t *colort
 	r_shadow_shadowmap_parameters[2] = 1.0;
 	r_shadow_shadowmap_parameters[3] = bound(0.0f, 1.0f - r_shadows_darken.value, 1.0f);
 
-	Math_atov(r_shadows_throwdirection.string, prvmshadowdir);
+	VectorCopy(r_shadows_throwdirection.vector, prvmshadowdir);
 	VectorCopy(prvmshadowdir, shadowdir);
 	VectorNormalize(shadowdir);
-	Math_atov(r_shadows_focus.string, prvmshadowfocus);
+	VectorCopy(r_shadows_focus.vector, prvmshadowfocus);
 	VectorCopy(prvmshadowfocus, shadowfocus);
 	VectorM(shadowfocus[0], r_refdef.view.right, shadoworigin);
 	VectorMA(shadoworigin, shadowfocus[1], r_refdef.view.up, shadoworigin);
@@ -5001,7 +5001,7 @@ void R_DrawModelShadows(int fbo, rtexture_t *depthtexture, rtexture_t *colortext
 	// get shadow dir
 	if (r_shadows.integer == 2)
 	{
-		Math_atov(r_shadows_throwdirection.string, prvmshadowdir);
+		VectorCopy(r_shadows_throwdirection.vector, prvmshadowdir);
 		VectorCopy(prvmshadowdir, shadowdir);
 		VectorNormalize(shadowdir);
 	}
