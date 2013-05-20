@@ -183,6 +183,7 @@ cvar_t r_glsl_postprocess_uservec1_enable = {CVAR_SAVE, "r_glsl_postprocess_user
 cvar_t r_glsl_postprocess_uservec2_enable = {CVAR_SAVE, "r_glsl_postprocess_uservec2_enable", "1", "enables postprocessing uservec2 usage, creates USERVEC1 define (only useful if default.glsl has been customized)"};
 cvar_t r_glsl_postprocess_uservec3_enable = {CVAR_SAVE, "r_glsl_postprocess_uservec3_enable", "1", "enables postprocessing uservec3 usage, creates USERVEC1 define (only useful if default.glsl has been customized)"};
 cvar_t r_glsl_postprocess_uservec4_enable = {CVAR_SAVE, "r_glsl_postprocess_uservec4_enable", "1", "enables postprocessing uservec4 usage, creates USERVEC1 define (only useful if default.glsl has been customized)"};
+cvar_t r_glsl_texturegamma = {0, "r_glsl_texturegamma", "0", "Apply gamma directly to texture while rendering to increase quality of dark areas (poor man's 16-bit FBO rendering, antialiasing works too!). The price is issues with blended surfaces."};
 
 cvar_t r_sunlight = {CVAR_SAVE, "r_sunlight", "0", "Enables sunlight GLSL rendering."};
 cvar_t r_sunlight_dir = {CVAR_SAVE, "r_sunlight_dir", "0 0 1", "Sun light direction"};
@@ -1991,12 +1992,21 @@ void R_SetupShader_Generic(rtexture_t *first, rtexture_t *second, int texturemod
 		permutation |= SHADERPERMUTATION_GLOW;
 	else if (texturemode == GL_DECAL)
 		permutation |= SHADERPERMUTATION_VERTEXTEXTUREBLEND;
-	if (usegamma && v_glslgamma.integer && v_glslgamma_2d.integer && !vid.sRGB2D && r_texture_gammaramps && !vid_gammatables_trivial)
-		permutation |= SHADERPERMUTATION_GAMMARAMPS;
 	if (suppresstexalpha)
 		permutation |= SHADERPERMUTATION_REFLECTCUBE;
 	if (!second)
 		texturemode = GL_MODULATE;
+	if (usegamma && v_glslgamma.integer && r_texture_gammaramps && !vid_gammatables_trivial)
+	{
+		if (notrippy)
+		{
+			// notrippy used here as identifier that we draw 2D GFX (which uses v_glslgamma_2d)
+			if (v_glslgamma_2d.integer && !vid.sRGB2D)
+				permutation |= SHADERPERMUTATION_GAMMARAMPS;
+		}
+		else if (r_glsl_texturegamma.integer && !r_fb.water.renderingscene)
+			permutation |= SHADERPERMUTATION_GAMMARAMPS;
+	}
 	if (vid.allowalphatocoverage)
 		GL_AlphaToCoverage(false);
 	switch (vid.renderpath)
@@ -2743,6 +2753,9 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 		// this has to be after RSurf_PrepareVerticesForBatch
 		if (rsurface.batchskeletaltransform3x4buffer)
 			permutation |= SHADERPERMUTATION_SKELETAL;
+		// for texturegamma, dont do gamma for light passes
+		if (r_glsl_texturegamma.integer && v_glslgamma.integer && mode != SHADERMODE_LIGHTSOURCE && !r_fb.water.renderingscene && (blendfuncflags & BLENDFUNC_ALLOWS_COLORMOD))
+			permutation |= SHADERPERMUTATION_GAMMARAMPS;
 		R_SetupShader_SetPermutationGLSL(mode, permutation);
 		if (r_glsl_permutation->ubiloc_Skeletal_Transform12_UniformBlock >= 0 && rsurface.batchskeletaltransform3x4buffer) qglBindBufferRange(GL_UNIFORM_BUFFER, r_glsl_permutation->ubibind_Skeletal_Transform12_UniformBlock, rsurface.batchskeletaltransform3x4buffer->bufferobject, rsurface.batchskeletaltransform3x4offset, rsurface.batchskeletaltransform3x4size);
 		if (r_glsl_permutation->loc_ModelToReflectCube >= 0) {Matrix4x4_ToArrayFloatGL(&rsurface.matrix, m16f);qglUniformMatrix4fv(r_glsl_permutation->loc_ModelToReflectCube, 1, false, m16f);}
@@ -2875,6 +2888,7 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 		if (r_glsl_permutation->tex_Texture_ScreenNormalMap >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_ScreenNormalMap   , r_shadow_prepassgeometrynormalmaptexture            );
 		if (r_glsl_permutation->tex_Texture_ScreenDiffuse   >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_ScreenDiffuse     , r_shadow_prepasslightingdiffusetexture              );
 		if (r_glsl_permutation->tex_Texture_ScreenSpecular  >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_ScreenSpecular    , r_shadow_prepasslightingspeculartexture             );
+		if (r_glsl_permutation->tex_Texture_GammaRamps  >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_GammaRamps    , r_texture_gammaramps);
 		if (rsurface.rtlight || (r_shadow_usingshadowmaportho && !(rsurface.ent_flags & RENDER_NOSELFSHADOW)))
 		{
 			if (r_glsl_permutation->tex_Texture_ShadowMap2D     >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_ShadowMap2D, r_shadow_shadowmap2ddepthtexture                           );
@@ -2885,13 +2899,13 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			}
 		}
 		if (r_glsl_permutation->tex_Texture_BounceGrid  >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_BounceGrid, r_shadow_bouncegridtexture);
-		// VorteX: Blood Omnicide sun light
-		if (r_sunlight.integer)
+		if (r_glsl_permutation->loc_SunDir >= 0 && r_glsl_permutation->loc_SunColor >= 0)
 		{
+			// VorteX: Blood Omnicide sun light
 			float sundir[3];
 			Matrix4x4_Transform3x3(&rsurface.entity->inversematrix, r_sunlight_dir.vector, sundir);
-			if (r_glsl_permutation->loc_SunDir >= 0) qglUniform4f(r_glsl_permutation->loc_SunDir, sundir[0], sundir[1], sundir[2], 0);
-			if (r_glsl_permutation->loc_SunColor >= 0) qglUniform4f(r_glsl_permutation->loc_SunColor, r_sunlight_color.vector[0], r_sunlight_color.vector[1], r_sunlight_color.vector[2], r_sunlight_intensity.value);
+			qglUniform4f(r_glsl_permutation->loc_SunDir, sundir[0], sundir[1], sundir[2], 0);
+			qglUniform4f(r_glsl_permutation->loc_SunColor, r_sunlight_color.vector[0], r_sunlight_color.vector[1], r_sunlight_color.vector[2], r_sunlight_intensity.value);
 		}
 		CHECKGLERROR
 		break;
@@ -4336,6 +4350,7 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_glsl_postprocess_uservec2_enable);
 	Cvar_RegisterVariable(&r_glsl_postprocess_uservec3_enable);
 	Cvar_RegisterVariable(&r_glsl_postprocess_uservec4_enable);
+	Cvar_RegisterVariable(&r_glsl_texturegamma);
 	Cvar_RegisterVariable(&r_sunlight);
 	Cvar_RegisterVariable(&r_sunlight_dir);
 	Cvar_RegisterVariable(&r_sunlight_color);
@@ -6652,7 +6667,7 @@ static void R_BlendView(int fbo, rtexture_t *depthtexture, rtexture_t *colortext
 		permutation =
 			  (r_fb.bloomtexture[r_fb.bloomindex] ? SHADERPERMUTATION_BLOOM : 0)
 			| (r_refdef.viewblend[3] > 0 ? SHADERPERMUTATION_VIEWTINT : 0)
-			| ((v_glslgamma.value && !vid_gammatables_trivial) ? SHADERPERMUTATION_GAMMARAMPS : 0)
+			| ((v_glslgamma.value && !vid_gammatables_trivial && !r_glsl_texturegamma.integer) ? SHADERPERMUTATION_GAMMARAMPS : 0)
 			| (r_glsl_postprocess.integer ? SHADERPERMUTATION_POSTPROCESSING : 0)
 			| ((!R_Stereo_ColorMasking() && r_glsl_saturation.value != 1) ? SHADERPERMUTATION_SATURATION : 0);
 
@@ -7560,7 +7575,7 @@ static void R_DrawBBoxMesh(vec3_t mins, vec3_t maxs, float cr, float cg, float c
 	}
 	R_Mesh_PrepareVertices_Generic_Arrays(8, vertex3f, color4f, NULL);
 	R_Mesh_ResetTextureState();
-	R_SetupShader_Generic_NoTexture(false, false);
+	R_SetupShader_Generic_NoTexture(true, false);
 	R_Mesh_Draw(0, 8, 0, 12, NULL, NULL, 0, bboxelements, NULL, 0);
 }
 
@@ -7576,7 +7591,7 @@ static void R_DrawEntityBBoxes_Callback(const entity_render_t *ent, const rtligh
 		return;
 
 	GL_CullFace(GL_NONE);
-	R_SetupShader_Generic_NoTexture(false, false);
+	R_SetupShader_Generic_NoTexture(true, false);
 
 	for (i = 0;i < numsurfaces;i++)
 	{
@@ -7719,7 +7734,7 @@ static void R_DrawNoModel_TransparentCallback(const entity_render_t *ent, const 
 		}
 	}
 //	R_Mesh_ResetTextureState();
-	R_SetupShader_Generic_NoTexture(false, false);
+	R_SetupShader_Generic_NoTexture(true, false);
 	R_Mesh_PrepareVertices_Generic_Arrays(6, nomodelvertex3f, color4f, NULL);
 	R_Mesh_Draw(0, 6, 0, 8, nomodelelement3i, NULL, 0, nomodelelement3s, NULL, 0);
 }
@@ -10576,7 +10591,7 @@ static void R_DrawTextureSurfaceList_Sky(int texturenumsurfaces, const msurface_
 	// transparent sky would be ridiculous
 	if (rsurface.texture->currentmaterialflags & MATERIALFLAGMASK_DEPTHSORTED)
 		return;
-	R_SetupShader_Generic_NoTexture(false, false);
+	R_SetupShader_Generic_NoTexture(true, false);
 	skyrenderlater = true;
 	RSurf_SetupDepthAndCulling();
 	GL_DepthMask(true);
@@ -10602,7 +10617,7 @@ static void R_DrawTextureSurfaceList_Sky(int texturenumsurfaces, const msurface_
 		}
 		else
 		{
-			R_SetupShader_Generic_NoTexture(false, false);
+			R_SetupShader_Generic_NoTexture(true, false);
 			// fog sky
 			GL_BlendFunc(GL_ONE, GL_ZERO);
 			RSurf_PrepareVerticesForBatch(BATCHNEED_ARRAY_VERTEX | BATCHNEED_NOGAPS, texturenumsurfaces, texturesurfacelist);
@@ -10900,7 +10915,7 @@ static void R_DrawTextureSurfaceList_ShowSurfaces(int texturenumsurfaces, const 
 	float c[4];
 
 //	R_Mesh_ResetTextureState();
-	R_SetupShader_Generic_NoTexture(false, false);
+	R_SetupShader_Generic_NoTexture(true, false);
 
 	if(rsurface.texture && rsurface.texture->currentskinframe)
 	{
@@ -11006,7 +11021,7 @@ static void R_DrawTextureSurfaceList_ShowSurfaces(int texturenumsurfaces, const 
 		RSurf_DrawBatch_GL11_ClampColor();
 
 		R_Mesh_PrepareVertices_Generic_Arrays(rsurface.batchnumvertices, rsurface.batchvertex3f, rsurface.passcolor4f, NULL);
-		R_SetupShader_Generic_NoTexture(false, false);
+		R_SetupShader_Generic_NoTexture(true, false);
 		RSurf_DrawBatch();
 	}
 	else if (!r_refdef.view.showdebug)
@@ -11524,7 +11539,7 @@ static void R_DrawLoc_Callback(const entity_render_t *ent, const rtlight_t *rtli
 			vertex3f[i] = mins[j] + size[j] * locboxvertex3f[i];
 
 	R_Mesh_PrepareVertices_Generic_Arrays(6*4, vertex3f, NULL, NULL);
-	R_SetupShader_Generic_NoTexture(false, false);
+	R_SetupShader_Generic_NoTexture(true, false);
 	R_Mesh_Draw(0, 6*4, 0, 6*2, NULL, NULL, 0, locboxelements, NULL, 0);
 }
 
@@ -12206,7 +12221,7 @@ static void R_DrawDebugModel(void)
 	{
 		float c = r_refdef.view.colorscale * r_showoverdraw.value * 0.125f;
 		flagsmask = MATERIALFLAG_SKY | MATERIALFLAG_WALL;
-		R_SetupShader_Generic_NoTexture(false, false);
+		R_SetupShader_Generic_NoTexture(true, false);
 		GL_DepthTest(false);
 		GL_DepthMask(false);
 		GL_DepthRange(0, 1);
@@ -12236,7 +12251,7 @@ static void R_DrawDebugModel(void)
 	flagsmask = MATERIALFLAG_SKY | MATERIALFLAG_WALL;
 
 //	R_Mesh_ResetTextureState();
-	R_SetupShader_Generic_NoTexture(false, false);
+	R_SetupShader_Generic_NoTexture(true, false);
 	GL_DepthRange(0, 1);
 	GL_DepthTest(!r_showdisabledepthtest.integer);
 	GL_DepthMask(false);

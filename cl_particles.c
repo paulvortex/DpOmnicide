@@ -2819,7 +2819,7 @@ static void R_DrawParticle_TransparentCallback(const entity_render_t *ent, const
 		if (texture != particletexture[p->texnum].texture)
 		{
 			texture = particletexture[p->texnum].texture;
-			R_SetupShader_Generic(texture, NULL, GL_MODULATE, 1, false, false, false);
+			R_SetupShader_Generic(texture, NULL, GL_MODULATE, 1, (p->blendmode == PBLEND_INVMOD) ? false : true, false, false);
 		}
 
 		if (p->blendmode == PBLEND_INVMOD)
