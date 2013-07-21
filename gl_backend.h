@@ -12,6 +12,9 @@ extern float gl_modelview16f[16];
 extern float gl_modelviewprojection16f[16];
 extern qboolean gl_modelmatrixchanged;
 
+extern cvar_t gl_vbo_dynamicvertex;
+extern cvar_t gl_vbo_dynamicindex;
+
 #define POLYGONELEMENTS_MAXPOINTS 258
 extern int polygonelement3i[(POLYGONELEMENTS_MAXPOINTS-2)*3];
 extern unsigned short polygonelement3s[(POLYGONELEMENTS_MAXPOINTS-2)*3];
@@ -113,7 +116,7 @@ void R_Mesh_ResetTextureState(void);
 void R_Mesh_ClearBindingsForTexture(int texnum);
 
 // renders a mesh
-void R_Mesh_Draw(int firstvertex, int numvertices, int firsttriangle, int numtriangles, const int *element3i, const r_meshbuffer_t *element3i_indexbuffer, size_t element3i_bufferoffset, const unsigned short *element3s, const r_meshbuffer_t *element3s_indexbuffer, size_t element3s_bufferoffset);
+void R_Mesh_Draw(int firstvertex, int numvertices, int firsttriangle, int numtriangles, const int *element3i, const r_meshbuffer_t *element3i_indexbuffer, int element3i_bufferoffset, const unsigned short *element3s, const r_meshbuffer_t *element3s_indexbuffer, int element3s_bufferoffset);
 
 // saves a section of the rendered frame to a .tga or .jpg file
 qboolean SCR_ScreenShot(char *filename, unsigned char *buffer1, unsigned char *buffer2, int x, int y, int width, int height, qboolean flipx, qboolean flipy, qboolean flipdiagonal, qboolean jpeg, qboolean png, qboolean gammacorrect, qboolean keep_alpha);

@@ -5099,7 +5099,9 @@ static void R_BeginCoronaQuery(rtlight_t *rtlight, float scale, qboolean usequer
 {
 	float zdist;
 	vec3_t centerorigin;
+#if defined(GL_SAMPLES_PASSED_ARB) && !defined(USE_GLES2)
 	float vertex3f[12];
+#endif
 	// if it's too close, skip it
 	if (VectorLength(rtlight->currentcolor) < (1.0f / 256.0f))
 		return;
@@ -5120,7 +5122,7 @@ static void R_BeginCoronaQuery(rtlight_t *rtlight, float scale, qboolean usequer
 		case RENDERPATH_GL20:
 		case RENDERPATH_GLES1:
 		case RENDERPATH_GLES2:
-#ifdef GL_SAMPLES_PASSED_ARB
+#if defined(GL_SAMPLES_PASSED_ARB) && !defined(USE_GLES2)
 			CHECKGLERROR
 			// NOTE: GL_DEPTH_TEST must be enabled or ATI won't count samples, so use GL_DepthFunc instead
 			qglBeginQueryARB(GL_SAMPLES_PASSED_ARB, rtlight->corona_queryindex_allpixels);
@@ -5171,7 +5173,7 @@ static void R_DrawCorona(rtlight_t *rtlight, float cscale, float scale)
 		case RENDERPATH_GL20:
 		case RENDERPATH_GLES1:
 		case RENDERPATH_GLES2:
-#ifdef GL_SAMPLES_PASSED_ARB
+#if defined(GL_SAMPLES_PASSED_ARB) && !defined(USE_GLES2)
 			CHECKGLERROR
 			qglGetQueryObjectivARB(rtlight->corona_queryindex_visiblepixels, GL_QUERY_RESULT_ARB, &visiblepixels);
 			qglGetQueryObjectivARB(rtlight->corona_queryindex_allpixels, GL_QUERY_RESULT_ARB, &allpixels);
@@ -5250,7 +5252,7 @@ void R_Shadow_DrawCoronas(void)
 	case RENDERPATH_GLES1:
 	case RENDERPATH_GLES2:
 		usequery = vid.support.arb_occlusion_query && r_coronas_occlusionquery.integer;
-#ifdef GL_SAMPLES_PASSED_ARB
+#if defined(GL_SAMPLES_PASSED_ARB) && !defined(USE_GLES2)
 		if (usequery)
 		{
 			GL_ColorMask(0,0,0,0);

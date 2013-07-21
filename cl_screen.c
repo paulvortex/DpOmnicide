@@ -83,7 +83,7 @@ cvar_t scr_screenshot_name_in_mapdir = {CVAR_SAVE, "scr_screenshot_name_in_mapdi
 cvar_t shownetgraph = {CVAR_SAVE, "shownetgraph", "0", "shows a graph of packet sizes and other information, 0 = off, 1 = show client netgraph, 2 = show client and server netgraphs (when hosting a server)"};
 cvar_t cl_demo_mousegrab = {0, "cl_demo_mousegrab", "0", "Allows reading the mouse input while playing demos. Useful for camera mods developed in csqc. (0: never, 1: always)"};
 cvar_t timedemo_screenshotframelist = {0, "timedemo_screenshotframelist", "", "when performing a timedemo, take screenshots of each frame in this space-separated list - example: 1 201 401"};
-cvar_t vid_touchscreen_outlinealpha = {0, "vid_touchscreen_outlinealpha", "0.25", "opacity of touchscreen area outlines"};
+cvar_t vid_touchscreen_outlinealpha = {0, "vid_touchscreen_outlinealpha", "0", "opacity of touchscreen area outlines"};
 cvar_t vid_touchscreen_overlayalpha = {0, "vid_touchscreen_overlayalpha", "0.25", "opacity of touchscreen area icons"};
 cvar_t r_speeds_graph = {CVAR_SAVE, "r_speeds_graph", "0", "display a graph of renderer statistics "};
 cvar_t r_speeds_graph_filter[8] =
@@ -245,16 +245,16 @@ static void SCR_CheckDrawCenterString (void)
 	SCR_DrawCenterString ();
 }
 
-static void SCR_DrawNetGraph_DrawGraph (int graphx, int graphy, int graphwidth, int graphheight, float graphscale, const char *label, float textsize, int packetcounter, netgraphitem_t *netgraph)
+static void SCR_DrawNetGraph_DrawGraph (int graphx, int graphy, int graphwidth, int graphheight, float graphscale, int graphlimit, const char *label, float textsize, int packetcounter, netgraphitem_t *netgraph)
 {
 	netgraphitem_t *graph;
 	int j, x, y, numlines;
 	int totalbytes = 0;
 	char bytesstring[128];
-	float g[NETGRAPH_PACKETS][6];
+	float g[NETGRAPH_PACKETS][7];
 	float *a;
 	float *b;
-	r_vertexgeneric_t vertex[(NETGRAPH_PACKETS+2)*5*2];
+	r_vertexgeneric_t vertex[(NETGRAPH_PACKETS+2)*6*2];
 	r_vertexgeneric_t *v;
 	DrawQ_Fill(graphx, graphy, graphwidth, graphheight + textsize * 2, 0, 0, 0, 0.5, 0);
 	// draw the bar graph itself
@@ -268,12 +268,16 @@ static void SCR_DrawNetGraph_DrawGraph (int graphx, int graphy, int graphwidth, 
 		g[j][3] = 1.0f;
 		g[j][4] = 1.0f;
 		g[j][5] = 1.0f;
+		g[j][6] = 1.0f;
 		if (graph->unreliablebytes == NETGRAPH_LOSTPACKET)
 			g[j][1] = 0.00f;
 		else if (graph->unreliablebytes == NETGRAPH_CHOKEDPACKET)
-			g[j][2] = 0.96f;
+			g[j][2] = 0.90f;
 		else
 		{
+			if(netgraph[j].time >= netgraph[(j+NETGRAPH_PACKETS-1)%NETGRAPH_PACKETS].time)
+				if(graph->unreliablebytes + graph->reliablebytes + graph->ackbytes >= graphlimit * (netgraph[j].time - netgraph[(j+NETGRAPH_PACKETS-1)%NETGRAPH_PACKETS].time))
+					g[j][2] = 0.98f;
 			g[j][3] = 1.0f    - graph->unreliablebytes * graphscale;
 			g[j][4] = g[j][3] - graph->reliablebytes   * graphscale;
 			g[j][5] = g[j][4] - graph->ackbytes        * graphscale;
@@ -281,11 +285,14 @@ static void SCR_DrawNetGraph_DrawGraph (int graphx, int graphy, int graphwidth, 
 			if (realtime - graph->time < 1.0f)
 				totalbytes += graph->unreliablebytes + graph->reliablebytes + graph->ackbytes;
 		}
+		if(graph->cleartime >= 0)
+			g[j][6] = 0.5f + 0.5f * (2.0 / M_PI) * atan((M_PI / 2.0) * (graph->cleartime - graph->time));
 		g[j][1] = bound(0.0f, g[j][1], 1.0f);
 		g[j][2] = bound(0.0f, g[j][2], 1.0f);
 		g[j][3] = bound(0.0f, g[j][3], 1.0f);
 		g[j][4] = bound(0.0f, g[j][4], 1.0f);
 		g[j][5] = bound(0.0f, g[j][5], 1.0f);
+		g[j][6] = bound(0.0f, g[j][6], 1.0f);
 	}
 	// render the lines for the graph
 	numlines = 0;
@@ -311,7 +318,10 @@ static void SCR_DrawNetGraph_DrawGraph (int graphx, int graphy, int graphwidth, 
 		VectorSet(v->vertex3f, graphx + graphwidth * a[0], graphy + graphheight * a[3], 0.0f);Vector4Set(v->color4f, 1.0f, 0.5f, 0.0f, 1.0f);Vector2Set(v->texcoord2f, 0.0f, 0.0f);v++;
 		VectorSet(v->vertex3f, graphx + graphwidth * b[0], graphy + graphheight * b[3], 0.0f);Vector4Set(v->color4f, 1.0f, 0.5f, 0.0f, 1.0f);Vector2Set(v->texcoord2f, 0.0f, 0.0f);v++;
 
-		numlines += 5;
+		VectorSet(v->vertex3f, graphx + graphwidth * a[0], graphy + graphheight * a[6], 0.0f);Vector4Set(v->color4f, 0.0f, 0.0f, 1.0f, 1.0f);Vector2Set(v->texcoord2f, 0.0f, 0.0f);v++;
+		VectorSet(v->vertex3f, graphx + graphwidth * b[0], graphy + graphheight * b[6], 0.0f);Vector4Set(v->color4f, 0.0f, 0.0f, 1.0f, 1.0f);Vector2Set(v->texcoord2f, 0.0f, 0.0f);v++;
+
+		numlines += 6;
 	}
 	if (numlines > 0)
 	{
@@ -332,7 +342,7 @@ SCR_DrawNetGraph
 */
 static void SCR_DrawNetGraph (void)
 {
-	int i, separator1, separator2, graphwidth, graphheight, netgraph_x, netgraph_y, textsize, index, netgraphsperrow;
+	int i, separator1, separator2, graphwidth, graphheight, netgraph_x, netgraph_y, textsize, index, netgraphsperrow, graphlimit;
 	float graphscale;
 	netconn_t *c;
 	char vabuf[1024];
@@ -350,6 +360,7 @@ static void SCR_DrawNetGraph (void)
 	graphwidth = 120;
 	graphheight = 70;
 	graphscale = 1.0f / 1500.0f;
+	graphlimit = cl_rate.integer;
 
 	netgraphsperrow = (vid_conwidth.integer + separator2) / (graphwidth * 2 + separator1 + separator2);
 	netgraphsperrow = max(netgraphsperrow, 1);
@@ -358,8 +369,8 @@ static void SCR_DrawNetGraph (void)
 	netgraph_x = (vid_conwidth.integer + separator2) - (1 + (index % netgraphsperrow)) * (graphwidth * 2 + separator1 + separator2);
 	netgraph_y = (vid_conheight.integer - 48 - sbar_info_pos.integer + separator2) - (1 + (index / netgraphsperrow)) * (graphheight + textsize + separator2);
 	c = cls.netcon;
-	SCR_DrawNetGraph_DrawGraph(netgraph_x                          , netgraph_y, graphwidth, graphheight, graphscale, "incoming", textsize, c->incoming_packetcounter, c->incoming_netgraph);
-	SCR_DrawNetGraph_DrawGraph(netgraph_x + graphwidth + separator1, netgraph_y, graphwidth, graphheight, graphscale, "outgoing", textsize, c->outgoing_packetcounter, c->outgoing_netgraph);
+	SCR_DrawNetGraph_DrawGraph(netgraph_x                          , netgraph_y, graphwidth, graphheight, graphscale, graphlimit, "incoming", textsize, c->incoming_packetcounter, c->incoming_netgraph);
+	SCR_DrawNetGraph_DrawGraph(netgraph_x + graphwidth + separator1, netgraph_y, graphwidth, graphheight, graphscale, graphlimit, "outgoing", textsize, c->outgoing_packetcounter, c->outgoing_netgraph);
 	index++;
 
 	if (sv.active && shownetgraph.integer >= 2)
@@ -371,8 +382,8 @@ static void SCR_DrawNetGraph (void)
 				continue;
 			netgraph_x = (vid_conwidth.integer + separator2) - (1 + (index % netgraphsperrow)) * (graphwidth * 2 + separator1 + separator2);
 			netgraph_y = (vid_conheight.integer - 48 + separator2) - (1 + (index / netgraphsperrow)) * (graphheight + textsize + separator2);
-			SCR_DrawNetGraph_DrawGraph(netgraph_x                          , netgraph_y, graphwidth, graphheight, graphscale, va(vabuf, sizeof(vabuf), "%s", svs.clients[i].name), textsize, c->outgoing_packetcounter, c->outgoing_netgraph);
-			SCR_DrawNetGraph_DrawGraph(netgraph_x + graphwidth + separator1, netgraph_y, graphwidth, graphheight, graphscale, ""                           , textsize, c->incoming_packetcounter, c->incoming_netgraph);
+			SCR_DrawNetGraph_DrawGraph(netgraph_x                          , netgraph_y, graphwidth, graphheight, graphscale, graphlimit, va(vabuf, sizeof(vabuf), "%s", svs.clients[i].name), textsize, c->outgoing_packetcounter, c->outgoing_netgraph);
+			SCR_DrawNetGraph_DrawGraph(netgraph_x + graphwidth + separator1, netgraph_y, graphwidth, graphheight, graphscale, graphlimit, ""                           , textsize, c->incoming_packetcounter, c->incoming_netgraph);
 			index++;
 		}
 	}
@@ -2030,7 +2041,7 @@ qboolean SCR_ScreenShot(char *filename, unsigned char *buffer1, unsigned char *b
 //=============================================================================
 
 int scr_numtouchscreenareas;
-scr_touchscreenarea_t scr_touchscreenareas[16];
+scr_touchscreenarea_t scr_touchscreenareas[128];
 
 static void SCR_DrawTouchscreenOverlay(void)
 {
@@ -2039,7 +2050,7 @@ static void SCR_DrawTouchscreenOverlay(void)
 	cachepic_t *pic;
 	for (i = 0, a = scr_touchscreenareas;i < scr_numtouchscreenareas;i++, a++)
 	{
-		if (vid_touchscreen_outlinealpha.value > 0 && a->rect[0] >= 0 && a->rect[1] >= 0 && a->rect[2] >= 4 && a->rect[3] >= 4)
+		if (developer.integer && vid_touchscreen_outlinealpha.value > 0 && a->rect[0] >= 0 && a->rect[1] >= 0 && a->rect[2] >= 4 && a->rect[3] >= 4)
 		{
 			DrawQ_Fill(a->rect[0] +              2, a->rect[1]                 , a->rect[2] - 4,          1    , 1, 1, 1, vid_touchscreen_outlinealpha.value * (0.5f + 0.5f * a->active), 0);
 			DrawQ_Fill(a->rect[0] +              1, a->rect[1] +              1, a->rect[2] - 2,          1    , 1, 1, 1, vid_touchscreen_outlinealpha.value * (0.5f + 0.5f * a->active), 0);
@@ -2051,14 +2062,19 @@ static void SCR_DrawTouchscreenOverlay(void)
 		pic = a->pic ? Draw_CachePic(a->pic) : NULL;
 		if (pic && pic->tex != r_texture_notexture)
 			DrawQ_Pic(a->rect[0], a->rect[1], Draw_CachePic(a->pic), a->rect[2], a->rect[3], 1, 1, 1, vid_touchscreen_overlayalpha.value * (0.5f + 0.5f * a->active), 0);
+		if (a->text && a->text[0])
+		{
+			int textwidth = DrawQ_TextWidth(a->text, 0, a->textheight, a->textheight, false, FONT_CHAT);
+			DrawQ_String(a->rect[0] + (a->rect[2] - textwidth) * 0.5f, a->rect[1] + (a->rect[3] - a->textheight) * 0.5f, a->text, 0, a->textheight, a->textheight, 1.0f, 1.0f, 1.0f, vid_touchscreen_overlayalpha.value, 0, NULL, false, FONT_CHAT);
+		}
 	}
 }
 
 void R_ClearScreen(qboolean fogcolor)
 {
 	float clearcolor[4];
-	// clear to black
-	Vector4Clear(clearcolor);
+	// clear to opaque black (if we're being composited it might otherwise render as transparent)
+	Vector4Set(clearcolor, 0.0f, 0.0f, 0.0f, 1.0f);
 	if (fogcolor && r_fog_clear.integer)
 	{
 		R_UpdateFog();
@@ -2151,7 +2167,7 @@ static void SCR_DrawScreen (void)
 		r_refdef.view.ortho_x = atan(r_refdef.view.frustum_x) * (360.0 / M_PI); // abused as angle by VM_CL_R_SetView
 		r_refdef.view.ortho_y = atan(r_refdef.view.frustum_y) * (360.0 / M_PI); // abused as angle by VM_CL_R_SetView
 
-		if(!CL_VM_UpdateView())
+		if(!CL_VM_UpdateView(r_stereo_side ? 0.0 : max(0.0, cl.time - cl.oldtime)))
 			R_RenderView();
 	}
 
@@ -2781,6 +2797,9 @@ void CL_UpdateScreen(void)
 			sb_lines = 24+16+8;
 	}
 
+	R_FrameData_NewFrame();
+	R_BufferData_NewFrame();
+
 	Matrix4x4_OriginFromMatrix(&r_refdef.view.matrix, vieworigin);
 	R_HDR_UpdateIrisAdaptation(vieworigin);
 
@@ -2881,10 +2900,14 @@ void CL_UpdateScreen(void)
 			qglDrawBuffer(GL_BACK_LEFT);
 
 		SCR_DrawScreen();
+		r_stereo_side = 0;
 	}
 	else
 #endif
+	{
+		r_stereo_side = 0;
 		SCR_DrawScreen();
+	}
 
 	SCR_CaptureVideo();
 

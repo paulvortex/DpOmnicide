@@ -180,7 +180,7 @@ void R_FrameData_SetMark(void);
 void R_FrameData_ReturnToMark(void);
 
 /// enum of the various types of hardware buffer object used in rendering
-/// note that the r_bufferdatasize[] array must be maintained to match this
+/// note that the r_buffermegs[] array must be maintained to match this
 typedef enum r_bufferdata_type_e
 {
 	R_BUFFERDATA_VERTEX, /// vertex buffer
@@ -195,8 +195,8 @@ r_bufferdata_type_t;
 void R_BufferData_Reset(void);
 /// begin a new frame (recycle old buffers)
 void R_BufferData_NewFrame(void);
-/// request space in a vertex/index/uniform buffer for the chosen data, returns the buffer pointer and offset, if allowfail is true it may return NULL if the growth limit has been reached, false will cause it to allocate additional memory despite this (warning: may run out of memory)
-r_meshbuffer_t *R_BufferData_Store(size_t size, void *data, r_bufferdata_type_t type, int *returnbufferoffset, qboolean allowfail);
+/// request space in a vertex/index/uniform buffer for the chosen data, returns the buffer pointer and offset, always successful
+r_meshbuffer_t *R_BufferData_Store(size_t size, const void *data, r_bufferdata_type_t type, int *returnbufferoffset);
 
 /// free all R_AnimCache memory
 void R_AnimCache_Free(void);
@@ -608,7 +608,7 @@ void R_Model_Sprite_Draw(entity_render_t *ent);
 
 struct prvm_prog_s;
 void R_UpdateFog(void);
-qboolean CL_VM_UpdateView(void);
+qboolean CL_VM_UpdateView(double frametime);
 void SCR_DrawConsole(void);
 void R_Shadow_EditLights_DrawSelectedLightProperties(void);
 void R_DecalSystem_Reset(decalsystem_t *decalsystem);

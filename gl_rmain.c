@@ -247,12 +247,12 @@ cvar_t r_glsl_saturation_redcompensate = {CVAR_SAVE, "r_glsl_saturation_redcompe
 cvar_t r_glsl_vertextextureblend_usebothalphas = {CVAR_SAVE, "r_glsl_vertextextureblend_usebothalphas", "0", "use both alpha layers on vertex blended surfaces, each alpha layer sets amount of 'blend leak' on another layer, requires mod_q3shader_force_terrain_alphaflag on."};
 
 cvar_t r_framedatasize = {CVAR_SAVE, "r_framedatasize", "0.5", "size of renderer data cache used during one frame (for skeletal animation caching, light processing, etc)"};
-cvar_t r_bufferdatasize[R_BUFFERDATA_COUNT] =
+cvar_t r_buffermegs[R_BUFFERDATA_COUNT] =
 {
-	{CVAR_SAVE, "r_bufferdatasize_vertex", "4", "vertex buffer size for one frame"},
-	{CVAR_SAVE, "r_bufferdatasize_index16", "1", "index buffer size for one frame (16bit indices)"},
-	{CVAR_SAVE, "r_bufferdatasize_index32", "1", "index buffer size for one frame (32bit indices)"},
-	{CVAR_SAVE, "r_bufferdatasize_uniform", "0.25", "uniform buffer size for one frame"},
+	{CVAR_SAVE, "r_buffermegs_vertex", "4", "vertex buffer size for one frame"},
+	{CVAR_SAVE, "r_buffermegs_index16", "1", "index buffer size for one frame (16bit indices)"},
+	{CVAR_SAVE, "r_buffermegs_index32", "1", "index buffer size for one frame (32bit indices)"},
+	{CVAR_SAVE, "r_buffermegs_uniform", "0.25", "uniform buffer size for one frame"},
 };
 
 extern cvar_t v_glslgamma;
@@ -1178,6 +1178,26 @@ static void R_GLSL_CompilePermutation(r_glsl_permutation_t *p, unsigned int mode
 		// look up all the uniform variable names we care about, so we don't
 		// have to look them up every time we set them
 
+#if 0
+		// debugging aid
+		{
+			GLint activeuniformindex = 0;
+			GLint numactiveuniforms = 0;
+			char uniformname[128];
+			GLsizei uniformnamelength = 0;
+			GLint uniformsize = 0;
+			GLenum uniformtype = 0;
+			memset(uniformname, 0, sizeof(uniformname));
+			qglGetProgramiv(p->program, GL_ACTIVE_UNIFORMS, &numactiveuniforms);
+			Con_Printf("Shader has %i uniforms\n", numactiveuniforms);
+			for (activeuniformindex = 0;activeuniformindex < numactiveuniforms;activeuniformindex++)
+			{
+				qglGetActiveUniform(p->program, activeuniformindex, sizeof(uniformname) - 1, &uniformnamelength, &uniformsize, &uniformtype, uniformname);
+				Con_Printf("Uniform %i name \"%s\" size %i type %i\n", (int)activeuniformindex, uniformname, (int)uniformsize, (int)uniformtype);
+			}
+		}
+#endif
+
 		p->loc_Texture_First              = qglGetUniformLocation(p->program, "Texture_First");
 		p->loc_Texture_Second             = qglGetUniformLocation(p->program, "Texture_Second");
 		p->loc_Texture_GammaRamps         = qglGetUniformLocation(p->program, "Texture_GammaRamps");
@@ -1329,15 +1349,19 @@ static void R_GLSL_CompilePermutation(r_glsl_permutation_t *p, unsigned int mode
 		if (p->loc_Texture_ReflectCube     >= 0) {p->tex_Texture_ReflectCube      = sampler;qglUniform1i(p->loc_Texture_ReflectCube     , sampler);sampler++;}
 		if (p->loc_Texture_BounceGrid      >= 0) {p->tex_Texture_BounceGrid       = sampler;qglUniform1i(p->loc_Texture_BounceGrid      , sampler);sampler++;}
 		// get the uniform block indices so we can bind them
+#ifndef USE_GLES2 /* FIXME: GLES3 only */
 		if (vid.support.arb_uniform_buffer_object)
 			p->ubiloc_Skeletal_Transform12_UniformBlock = qglGetUniformBlockIndex(p->program, "Skeletal_Transform12_UniformBlock");
 		else
+#endif
 			p->ubiloc_Skeletal_Transform12_UniformBlock = -1;
 		// clear the uniform block bindings
 		p->ubibind_Skeletal_Transform12_UniformBlock = -1;
 		// bind the uniform blocks in use
 		ubibind = 0;
+#ifndef USE_GLES2 /* FIXME: GLES3 only */
 		if (p->ubiloc_Skeletal_Transform12_UniformBlock >= 0) {p->ubibind_Skeletal_Transform12_UniformBlock = ubibind;qglUniformBlockBinding(p->program, p->ubiloc_Skeletal_Transform12_UniformBlock, ubibind);ubibind++;}
+#endif
 		// we're done compiling and setting up the shader, at least until it is used
 		CHECKGLERROR
 		Con_DPrintf("^5GLSL shader %s compiled (%i textures).\n", permutationname, sampler);
@@ -1359,7 +1383,10 @@ static void R_SetupShader_SetPermutationGLSL(unsigned int mode, unsigned int per
 		if (!r_glsl_permutation->program)
 		{
 			if (!r_glsl_permutation->compiled)
+			{
+				Con_DPrintf("Compiling shader mode %u permutation %u\n", mode, permutation);
 				R_GLSL_CompilePermutation(perm, mode, permutation);
+			}
 			if (!r_glsl_permutation->program)
 			{
 				// remove features until we find a valid permutation
@@ -1392,6 +1419,7 @@ static void R_SetupShader_SetPermutationGLSL(unsigned int mode, unsigned int per
 	if (r_glsl_permutation->loc_ModelViewProjectionMatrix >= 0) qglUniformMatrix4fv(r_glsl_permutation->loc_ModelViewProjectionMatrix, 1, false, gl_modelviewprojection16f);
 	if (r_glsl_permutation->loc_ModelViewMatrix >= 0) qglUniformMatrix4fv(r_glsl_permutation->loc_ModelViewMatrix, 1, false, gl_modelview16f);
 	if (r_glsl_permutation->loc_ClientTime >= 0) qglUniform1f(r_glsl_permutation->loc_ClientTime, cl.time);
+	CHECKGLERROR
 }
 
 #ifdef SUPPORTD3D
@@ -2094,7 +2122,9 @@ void R_SetupShader_DepthOrShadow(qboolean notrippy, qboolean depthrgb, qboolean 
 	case RENDERPATH_GL20:
 	case RENDERPATH_GLES2:
 		R_SetupShader_SetPermutationGLSL(SHADERMODE_DEPTH_OR_SHADOW, permutation);
+#ifndef USE_GLES2 /* FIXME: GLES3 only */
 		if (r_glsl_permutation->ubiloc_Skeletal_Transform12_UniformBlock >= 0 && rsurface.batchskeletaltransform3x4buffer) qglBindBufferRange(GL_UNIFORM_BUFFER, r_glsl_permutation->ubibind_Skeletal_Transform12_UniformBlock, rsurface.batchskeletaltransform3x4buffer->bufferobject, rsurface.batchskeletaltransform3x4offset, rsurface.batchskeletaltransform3x4size);
+#endif
 		break;
 	case RENDERPATH_GL13:
 	case RENDERPATH_GLES1:
@@ -2753,11 +2783,12 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 		// this has to be after RSurf_PrepareVerticesForBatch
 		if (rsurface.batchskeletaltransform3x4buffer)
 			permutation |= SHADERPERMUTATION_SKELETAL;
-		// for texturegamma, dont do gamma for light passes
-		if (r_glsl_texturegamma.integer && v_glslgamma.integer && mode != SHADERMODE_LIGHTSOURCE && !r_fb.water.renderingscene && (blendfuncflags & BLENDFUNC_ALLOWS_COLORMOD))
+		if (r_glsl_texturegamma.integer && v_glslgamma.integer && !r_fb.water.renderingscene && (blendfuncflags & BLENDFUNC_ALLOWS_COLORMOD))
 			permutation |= SHADERPERMUTATION_GAMMARAMPS;
 		R_SetupShader_SetPermutationGLSL(mode, permutation);
+#ifndef USE_GLES2 /* FIXME: GLES3 only */
 		if (r_glsl_permutation->ubiloc_Skeletal_Transform12_UniformBlock >= 0 && rsurface.batchskeletaltransform3x4buffer) qglBindBufferRange(GL_UNIFORM_BUFFER, r_glsl_permutation->ubibind_Skeletal_Transform12_UniformBlock, rsurface.batchskeletaltransform3x4buffer->bufferobject, rsurface.batchskeletaltransform3x4offset, rsurface.batchskeletaltransform3x4size);
+#endif
 		if (r_glsl_permutation->loc_ModelToReflectCube >= 0) {Matrix4x4_ToArrayFloatGL(&rsurface.matrix, m16f);qglUniformMatrix4fv(r_glsl_permutation->loc_ModelToReflectCube, 1, false, m16f);}
 		if (mode == SHADERMODE_LIGHTSOURCE)
 		{
@@ -4048,9 +4079,11 @@ static void gl_main_start(void)
 		r_loadnormalmap = true;
 		r_loadgloss = true;
 		r_loadfog = false;
+#ifdef GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT
 		if (vid.support.arb_uniform_buffer_object)
 			qglGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &r_uniformbufferalignment);
-		break;
+#endif
+			break;
 	case RENDERPATH_GL13:
 	case RENDERPATH_GLES1:
 		Cvar_SetValueQuick(&r_textureunits, vid.texunits);
@@ -4118,6 +4151,27 @@ static void gl_main_start(void)
 	r_texture_numcubemaps = 0;
 
 	r_refdef.fogmasktable_density = 0;
+
+#ifdef __ANDROID__
+	// For Steelstorm Android
+	// FIXME CACHE the program and reload
+	// FIXME see possible combinations for SS:BR android
+	Con_DPrintf("Compiling most used shaders for SS:BR android... START\n");
+	R_SetupShader_SetPermutationGLSL(0, 12);
+	R_SetupShader_SetPermutationGLSL(0, 13);
+	R_SetupShader_SetPermutationGLSL(0, 8388621);
+	R_SetupShader_SetPermutationGLSL(3, 0);
+	R_SetupShader_SetPermutationGLSL(3, 2048);
+	R_SetupShader_SetPermutationGLSL(5, 0);
+	R_SetupShader_SetPermutationGLSL(5, 2);
+	R_SetupShader_SetPermutationGLSL(5, 2048);
+	R_SetupShader_SetPermutationGLSL(5, 8388608);
+	R_SetupShader_SetPermutationGLSL(11, 1);
+	R_SetupShader_SetPermutationGLSL(11, 2049);
+	R_SetupShader_SetPermutationGLSL(11, 8193);
+	R_SetupShader_SetPermutationGLSL(11, 10241);
+	Con_DPrintf("Compiling most used shaders for SS:BR android... END\n");
+#endif
 }
 
 static void gl_main_shutdown(void)
@@ -4135,7 +4189,7 @@ static void gl_main_shutdown(void)
 	case RENDERPATH_GL20:
 	case RENDERPATH_GLES1:
 	case RENDERPATH_GLES2:
-#ifdef GL_SAMPLES_PASSED_ARB
+#if defined(GL_SAMPLES_PASSED_ARB) && !defined(USE_GLES2)
 		if (r_maxqueries)
 			qglDeleteQueriesARB(r_maxqueries, r_queries);
 #endif
@@ -4403,10 +4457,17 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_glsl_vertextextureblend_usebothalphas);
 	Cvar_RegisterVariable(&r_framedatasize);
 	for (i = 0;i < R_BUFFERDATA_COUNT;i++)
-		Cvar_RegisterVariable(&r_bufferdatasize[i]);
+		Cvar_RegisterVariable(&r_buffermegs[i]);
 	Cvar_RegisterVariable(&r_batch_dynamicbuffer);
 	if (gamemode == GAME_NEHAHRA || gamemode == GAME_TENEBRAE)
 		Cvar_SetValue("r_fullbrights", 0);
+#ifdef DP_MOBILETOUCH
+	// GLES devices have terrible depth precision in general, so...
+	Cvar_SetValueQuick(&r_nearclip, 4);
+	Cvar_SetValueQuick(&r_farclip_base, 4096);
+	Cvar_SetValueQuick(&r_farclip_world, 0);
+	Cvar_SetValueQuick(&r_useinfinitefarclip, 0);
+#endif
 	R_RegisterModule("GL_Main", gl_main_start, gl_main_shutdown, gl_main_newmap, NULL, NULL);
 }
 
@@ -4678,8 +4739,8 @@ void R_FrameData_ReturnToMark(void)
 
 //==================================================================================
 
-// avoid reusing the same buffer objects on consecutive buffers
-#define R_BUFFERDATA_CYCLE 2
+// avoid reusing the same buffer objects on consecutive frames
+#define R_BUFFERDATA_CYCLE 3
 
 typedef struct r_bufferdata_buffer_s
 {
@@ -4703,7 +4764,7 @@ void R_BufferData_Reset(void)
 		for (type = 0;type < R_BUFFERDATA_COUNT;type++)
 		{
 			// free all buffers
-			p = &r_bufferdata_buffer[r_bufferdata_cycle][type];
+			p = &r_bufferdata_buffer[cycle][type];
 			while (*p)
 			{
 				mem = *p;
@@ -4717,12 +4778,30 @@ void R_BufferData_Reset(void)
 }
 
 // resize buffer as needed (this actually makes a new one, the old one will be recycled next frame)
-static void R_BufferData_Resize(r_bufferdata_type_t type, qboolean mustgrow)
+static void R_BufferData_Resize(r_bufferdata_type_t type, qboolean mustgrow, size_t minsize)
 {
 	r_bufferdata_buffer_t *mem = r_bufferdata_buffer[r_bufferdata_cycle][type];
 	size_t size;
-	size = (size_t)(r_bufferdatasize[type].value * 1024*1024);
-	size = bound(65536, size, 512*1024*1024);
+	float newvalue = r_buffermegs[type].value;
+
+	// increase the cvar if we have to (but only if we already have a mem)
+	if (mustgrow && mem)
+		newvalue *= 2.0f;
+	newvalue = bound(0.25f, newvalue, 256.0f);
+	while (newvalue * 1024*1024 < minsize)
+		newvalue *= 2.0f;
+
+	// clamp the cvar to valid range
+	newvalue = bound(0.25f, newvalue, 256.0f);
+	if (r_buffermegs[type].value != newvalue)
+		Cvar_SetValueQuick(&r_buffermegs[type], newvalue);
+
+	// calculate size in bytes
+	size = (size_t)(newvalue * 1024*1024);
+	size = bound(131072, size, 256*1024*1024);
+
+	// allocate a new buffer if the size is different (purge old one later)
+	// or if we were told we must grow the buffer
 	if (!mem || mem->size != size || mustgrow)
 	{
 		mem = (r_bufferdata_buffer_t *)Mem_Alloc(r_main_mempool, sizeof(*mem));
@@ -4752,7 +4831,7 @@ void R_BufferData_NewFrame(void)
 	{
 		if (r_bufferdata_buffer[r_bufferdata_cycle][type])
 		{
-			R_BufferData_Resize((r_bufferdata_type_t)type, false);
+			R_BufferData_Resize((r_bufferdata_type_t)type, false, 131072);
 			// free all but the head buffer, this is how we recycle obsolete
 			// buffers after they are no longer in use
 			p = &r_bufferdata_buffer[r_bufferdata_cycle][type]->purge;
@@ -4770,12 +4849,11 @@ void R_BufferData_NewFrame(void)
 	}
 }
 
-r_meshbuffer_t *R_BufferData_Store(size_t datasize, void *data, r_bufferdata_type_t type, int *returnbufferoffset, qboolean allowfail)
+r_meshbuffer_t *R_BufferData_Store(size_t datasize, const void *data, r_bufferdata_type_t type, int *returnbufferoffset)
 {
 	r_bufferdata_buffer_t *mem;
 	int offset = 0;
 	int padsize;
-	float newvalue;
 
 	*returnbufferoffset = 0;
 
@@ -4786,16 +4864,13 @@ r_meshbuffer_t *R_BufferData_Store(size_t datasize, void *data, r_bufferdata_typ
 	else
 		padsize = (datasize + 15) & ~15;
 
-	while (!r_bufferdata_buffer[r_bufferdata_cycle][type] || r_bufferdata_buffer[r_bufferdata_cycle][type]->current + padsize > r_bufferdata_buffer[r_bufferdata_cycle][type]->size)
-	{
-		// emergency - we ran out of space, allocate more memory
-		newvalue = bound(0.25f, r_bufferdatasize[type].value * 2.0f, 256.0f);
-		// if we're already at the limit, just fail (if allowfail is false we might run out of video ram)
-		if (newvalue == r_bufferdatasize[type].value && allowfail)
-			return NULL;
-		Cvar_SetValueQuick(&r_bufferdatasize[type], newvalue);
-		R_BufferData_Resize(type, true);
-	}
+	// if we ran out of space in this buffer we must allocate a new one
+	if (!r_bufferdata_buffer[r_bufferdata_cycle][type] || r_bufferdata_buffer[r_bufferdata_cycle][type]->current + padsize > r_bufferdata_buffer[r_bufferdata_cycle][type]->size)
+		R_BufferData_Resize(type, true, padsize);
+
+	// if the resize did not give us enough memory, fail
+	if (!r_bufferdata_buffer[r_bufferdata_cycle][type] || r_bufferdata_buffer[r_bufferdata_cycle][type]->current + padsize > r_bufferdata_buffer[r_bufferdata_cycle][type]->size)
+		Sys_Error("R_BufferData_Store: failed to create a new buffer of sufficient size\n");
 
 	mem = r_bufferdata_buffer[r_bufferdata_cycle][type];
 	offset = mem->current;
@@ -4927,7 +5002,7 @@ qboolean R_AnimCache_GetEntity(entity_render_t *ent, qboolean wantnormals, qbool
 		Mod_Skeletal_BuildTransforms(model, ent->frameblend, ent->skeleton, NULL, ent->animcache_skeletaltransform3x4); 
 		// note: this can fail if the buffer is at the grow limit
 		ent->animcache_skeletaltransform3x4size = sizeof(float[3][4]) * model->num_bones;
-		ent->animcache_skeletaltransform3x4buffer = R_BufferData_Store(ent->animcache_skeletaltransform3x4size, ent->animcache_skeletaltransform3x4, R_BUFFERDATA_UNIFORM, &ent->animcache_skeletaltransform3x4offset, true);
+		ent->animcache_skeletaltransform3x4buffer = R_BufferData_Store(ent->animcache_skeletaltransform3x4size, ent->animcache_skeletaltransform3x4, R_BUFFERDATA_UNIFORM, &ent->animcache_skeletaltransform3x4offset);
 	}
 	else if (ent->animcache_vertex3f)
 	{
@@ -5661,7 +5736,9 @@ void R_EntityMatrix(const matrix4x4_t *matrix)
 		case RENDERPATH_GL11:
 		case RENDERPATH_GL13:
 		case RENDERPATH_GLES1:
+#ifndef USE_GLES2
 			qglLoadMatrixf(gl_modelview16f);CHECKGLERROR
+#endif
 			break;
 		case RENDERPATH_SOFT:
 			DPSOFTRAST_UniformMatrix4fv(DPSOFTRAST_UNIFORM_ModelViewProjectionMatrixM1, 1, false, gl_modelviewprojection16f);
@@ -7151,8 +7228,6 @@ void R_RenderView(void)
 		R_SortEntities();
 
 	R_AnimCache_ClearCache();
-	R_FrameData_NewFrame();
-	R_BufferData_NewFrame();
 
 	/* adjust for stereo display */
 	if(R_Stereo_Active())
@@ -9380,12 +9455,12 @@ void RSurf_PrepareVerticesForBatch(int batchneed, int texturenumsurfaces, const 
 					rsurface.batchelement3s[i] = rsurface.batchelement3i[i];
 			}
 			// upload buffer data for the copytriangles batch
-			if (vid.forcevbo || (r_batch_dynamicbuffer.integer && vid.support.arb_vertex_buffer_object))
+			if (((r_batch_dynamicbuffer.integer || gl_vbo_dynamicindex.integer) && vid.support.arb_vertex_buffer_object && gl_vbo.integer) || vid.forcevbo)
 			{
 				if (rsurface.batchelement3s)
-					rsurface.batchelement3s_indexbuffer = R_BufferData_Store(rsurface.batchnumtriangles * sizeof(short[3]), rsurface.batchelement3s, R_BUFFERDATA_INDEX16, &rsurface.batchelement3s_bufferoffset, !vid.forcevbo);
+					rsurface.batchelement3s_indexbuffer = R_BufferData_Store(rsurface.batchnumtriangles * sizeof(short[3]), rsurface.batchelement3s, R_BUFFERDATA_INDEX16, &rsurface.batchelement3s_bufferoffset);
 				else if (rsurface.batchelement3i)
-					rsurface.batchelement3i_indexbuffer = R_BufferData_Store(rsurface.batchnumtriangles * sizeof(int[3]), rsurface.batchelement3i, R_BUFFERDATA_INDEX32, &rsurface.batchelement3i_bufferoffset, !vid.forcevbo);
+					rsurface.batchelement3i_indexbuffer = R_BufferData_Store(rsurface.batchnumtriangles * sizeof(int[3]), rsurface.batchelement3i, R_BUFFERDATA_INDEX32, &rsurface.batchelement3i_bufferoffset);
 			}
 		}
 		else
@@ -10155,35 +10230,35 @@ void RSurf_PrepareVerticesForBatch(int batchneed, int texturenumsurfaces, const 
 	}
 
 	// upload buffer data for the dynamic batch
-	if (vid.forcevbo || (r_batch_dynamicbuffer.integer && vid.support.arb_vertex_buffer_object))
+	if (((r_batch_dynamicbuffer.integer || gl_vbo_dynamicvertex.integer || gl_vbo_dynamicindex.integer) && vid.support.arb_vertex_buffer_object && gl_vbo.integer) || vid.forcevbo)
 	{
 		if (rsurface.batchvertexmesh)
-			rsurface.batchvertexmesh_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(r_vertexmesh_t), rsurface.batchvertexmesh, R_BUFFERDATA_VERTEX, &rsurface.batchvertexmesh_bufferoffset, !vid.forcevbo);
+			rsurface.batchvertexmesh_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(r_vertexmesh_t), rsurface.batchvertexmesh, R_BUFFERDATA_VERTEX, &rsurface.batchvertexmesh_bufferoffset);
 		else
 		{
 			if (rsurface.batchvertex3f)
-				rsurface.batchvertex3f_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(float[3]), rsurface.batchvertex3f, R_BUFFERDATA_VERTEX, &rsurface.batchvertex3f_bufferoffset, !vid.forcevbo);
+				rsurface.batchvertex3f_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(float[3]), rsurface.batchvertex3f, R_BUFFERDATA_VERTEX, &rsurface.batchvertex3f_bufferoffset);
 			if (rsurface.batchsvector3f)
-				rsurface.batchsvector3f_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(float[3]), rsurface.batchsvector3f, R_BUFFERDATA_VERTEX, &rsurface.batchsvector3f_bufferoffset, !vid.forcevbo);
+				rsurface.batchsvector3f_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(float[3]), rsurface.batchsvector3f, R_BUFFERDATA_VERTEX, &rsurface.batchsvector3f_bufferoffset);
 			if (rsurface.batchtvector3f)
-				rsurface.batchtvector3f_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(float[3]), rsurface.batchtvector3f, R_BUFFERDATA_VERTEX, &rsurface.batchtvector3f_bufferoffset, !vid.forcevbo);
+				rsurface.batchtvector3f_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(float[3]), rsurface.batchtvector3f, R_BUFFERDATA_VERTEX, &rsurface.batchtvector3f_bufferoffset);
 			if (rsurface.batchnormal3f)
-				rsurface.batchnormal3f_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(float[3]), rsurface.batchnormal3f, R_BUFFERDATA_VERTEX, &rsurface.batchnormal3f_bufferoffset, !vid.forcevbo);
-			if (rsurface.batchlightmapcolor4f && r_batch_dynamicbuffer.integer && vid.support.arb_vertex_buffer_object)
-				rsurface.batchlightmapcolor4f_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(float[4]), rsurface.batchlightmapcolor4f, R_BUFFERDATA_VERTEX, &rsurface.batchlightmapcolor4f_bufferoffset, !vid.forcevbo);
-			if (rsurface.batchtexcoordtexture2f && r_batch_dynamicbuffer.integer && vid.support.arb_vertex_buffer_object)
-				rsurface.batchtexcoordtexture2f_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(float[2]), rsurface.batchtexcoordtexture2f, R_BUFFERDATA_VERTEX, &rsurface.batchtexcoordtexture2f_bufferoffset, !vid.forcevbo);
-			if (rsurface.batchtexcoordlightmap2f && r_batch_dynamicbuffer.integer && vid.support.arb_vertex_buffer_object)
-				rsurface.batchtexcoordlightmap2f_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(float[2]), rsurface.batchtexcoordlightmap2f, R_BUFFERDATA_VERTEX, &rsurface.batchtexcoordlightmap2f_bufferoffset, !vid.forcevbo);
+				rsurface.batchnormal3f_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(float[3]), rsurface.batchnormal3f, R_BUFFERDATA_VERTEX, &rsurface.batchnormal3f_bufferoffset);
+			if (rsurface.batchlightmapcolor4f)
+				rsurface.batchlightmapcolor4f_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(float[4]), rsurface.batchlightmapcolor4f, R_BUFFERDATA_VERTEX, &rsurface.batchlightmapcolor4f_bufferoffset);
+			if (rsurface.batchtexcoordtexture2f)
+				rsurface.batchtexcoordtexture2f_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(float[2]), rsurface.batchtexcoordtexture2f, R_BUFFERDATA_VERTEX, &rsurface.batchtexcoordtexture2f_bufferoffset);
+			if (rsurface.batchtexcoordlightmap2f)
+				rsurface.batchtexcoordlightmap2f_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(float[2]), rsurface.batchtexcoordlightmap2f, R_BUFFERDATA_VERTEX, &rsurface.batchtexcoordlightmap2f_bufferoffset);
 			if (rsurface.batchskeletalindex4ub)
-				rsurface.batchskeletalindex4ub_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(unsigned char[4]), rsurface.batchskeletalindex4ub, R_BUFFERDATA_VERTEX, &rsurface.batchskeletalindex4ub_bufferoffset, !vid.forcevbo);
+				rsurface.batchskeletalindex4ub_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(unsigned char[4]), rsurface.batchskeletalindex4ub, R_BUFFERDATA_VERTEX, &rsurface.batchskeletalindex4ub_bufferoffset);
 			if (rsurface.batchskeletalweight4ub)
-				rsurface.batchskeletalweight4ub_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(unsigned char[4]), rsurface.batchskeletalweight4ub, R_BUFFERDATA_VERTEX, &rsurface.batchskeletalweight4ub_bufferoffset, !vid.forcevbo);
+				rsurface.batchskeletalweight4ub_vertexbuffer = R_BufferData_Store(rsurface.batchnumvertices * sizeof(unsigned char[4]), rsurface.batchskeletalweight4ub, R_BUFFERDATA_VERTEX, &rsurface.batchskeletalweight4ub_bufferoffset);
 		}
 		if (rsurface.batchelement3s)
-			rsurface.batchelement3s_indexbuffer = R_BufferData_Store(rsurface.batchnumtriangles * sizeof(short[3]), rsurface.batchelement3s, R_BUFFERDATA_INDEX16, &rsurface.batchelement3s_bufferoffset, !vid.forcevbo);
+			rsurface.batchelement3s_indexbuffer = R_BufferData_Store(rsurface.batchnumtriangles * sizeof(short[3]), rsurface.batchelement3s, R_BUFFERDATA_INDEX16, &rsurface.batchelement3s_bufferoffset);
 		else if (rsurface.batchelement3i)
-			rsurface.batchelement3i_indexbuffer = R_BufferData_Store(rsurface.batchnumtriangles * sizeof(int[3]), rsurface.batchelement3i, R_BUFFERDATA_INDEX32, &rsurface.batchelement3i_bufferoffset, !vid.forcevbo);
+			rsurface.batchelement3i_indexbuffer = R_BufferData_Store(rsurface.batchnumtriangles * sizeof(int[3]), rsurface.batchelement3i, R_BUFFERDATA_INDEX32, &rsurface.batchelement3i_bufferoffset);
 	}
 }
 
@@ -12209,10 +12284,9 @@ extern cvar_t mod_collision_bih;
 static void R_DrawDebugModel(void)
 {
 	entity_render_t *ent = rsurface.entity;
-	int i, j, k, l, flagsmask;
+	int i, j, flagsmask;
 	const msurface_t *surface;
 	dp_model_t *model = ent->model;
-	vec3_t v;
 
 	if (!sv.active  && !cls.demoplayback && ent != r_refdef.scene.worldentity)
 		return;
@@ -12344,6 +12418,8 @@ static void R_DrawDebugModel(void)
 
 	if (r_shownormals.value != 0 && qglBegin)
 	{
+		int l, k;
+		vec3_t v;
 		if (r_showdisabledepthtest.integer)
 		{
 			GL_BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
