@@ -107,7 +107,7 @@ static void Host_Status_f (void)
 		if (svs.clients[i].active)
 			players++;
 	print ("host:     %s\n", Cvar_VariableString ("hostname"));
-	print ("version:  %s build %s\n", gamename, buildstring);
+	print ("version:  %s build %s (gamename %s)\n", gamename, buildstring, gamenetworkfiltername);
 	print ("protocol: %i (%s)\n", Protocol_NumberForEnum(sv.protocol), Protocol_NameForEnum(sv.protocol));
 	print ("map:      %s\n", sv.name);
 	print ("timing:   %s\n", Host_TimingReport(vabuf, sizeof(vabuf)));
@@ -379,9 +379,11 @@ static void Host_Map_f (void)
 		svs.clients = (client_t *)Mem_Alloc(sv_mempool, sizeof(client_t) * svs.maxclients);
 	}
 
+#ifdef CONFIG_MENU
 	// remove menu
 	if (key_dest == key_menu || key_dest == key_menu_grabbed)
 		MR_ToggleMenu(0);
+#endif
 	key_dest = key_game;
 
 	svs.serverflags = 0;			// haven't completed an episode yet
@@ -414,9 +416,11 @@ static void Host_Changelevel_f (void)
 		return;
 	}
 
+#ifdef CONFIG_MENU
 	// remove menu
 	if (key_dest == key_menu || key_dest == key_menu_grabbed)
 		MR_ToggleMenu(0);
+#endif
 	key_dest = key_game;
 
 	SV_SaveSpawnparms ();
@@ -449,9 +453,11 @@ static void Host_Restart_f (void)
 		return;
 	}
 
+#ifdef CONFIG_MENU
 	// remove menu
 	if (key_dest == key_menu || key_dest == key_menu_grabbed)
 		MR_ToggleMenu(0);
+#endif
 	key_dest = key_game;
 
 	allowcheats = sv_cheats.integer != 0;
@@ -792,9 +798,11 @@ static void Host_Loadgame_f (void)
 	if (cls.demoplayback)
 		CL_Disconnect ();
 
+#ifdef CONFIG_MENU
 	// remove menu
 	if (key_dest == key_menu || key_dest == key_menu_grabbed)
 		MR_ToggleMenu(0);
+#endif
 	key_dest = key_game;
 
 	cls.demonum = -1;		// stop demo loop in case this fails

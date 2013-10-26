@@ -17,7 +17,9 @@
 #include "mdfour.h"
 
 extern cvar_t prvm_backtraceforwarnings;
+#ifdef USEODE
 extern dllhandle_t ode_dll;
+#endif
 
 // LordHavoc: changed this to NOT use a return statement, so that it can be used in functions that must return a value
 void VM_Warning(prvm_prog_t *prog, const char *fmt, ...)
@@ -275,19 +277,21 @@ static qboolean checkextension(prvm_prog_t *prog, const char *name)
 			e++;
 		if ((e - start) == len && !strncasecmp(start, name, len))
 		{
+#ifdef USEODE
 			// special sheck for ODE
 			if (!strncasecmp("DP_PHYSICS_ODE", name, 14))
 			{
-#ifdef ODE_DYNAMIC
+#ifndef LINK_TO_LIBODE
 				return ode_dll ? true : false;
 #else
-#ifdef ODE_STATIC
+#ifdef LINK_TO_LIBODE
 				return true;
 #else
 				return false;
 #endif
 #endif
 			}
+#endif
 
 			// special sheck for d0_blind_id
 			if (!strcasecmp("DP_CRYPTO", name))
@@ -2868,7 +2872,9 @@ VM_gettime
 float	gettime(prvm_prog_t *prog)
 =========
 */
+#ifdef CONFIG_CD
 float CDAudio_GetPosition(void);
+#endif
 void VM_gettime(prvm_prog_t *prog)
 {
 	int timer_index;
@@ -2896,9 +2902,11 @@ void VM_gettime(prvm_prog_t *prog)
 			case 3: // GETTIME_UPTIME
 				PRVM_G_FLOAT(OFS_RETURN) = realtime;
 				break;
+#ifdef CONFIG_CD
 			case 4: // GETTIME_CDTRACK
 				PRVM_G_FLOAT(OFS_RETURN) = CDAudio_GetPosition();
 				break;
+#endif
 			default:
 				VM_Warning(prog, "VM_gettime: %s: unsupported timer specified, returning realtime\n", prog->name);
 				PRVM_G_FLOAT(OFS_RETURN) = realtime;

@@ -102,7 +102,7 @@ static size_t Crypto_UnParsePack(char *buf, size_t len, unsigned long header, co
 
 #define USE_AES
 
-#ifdef CRYPTO_STATIC
+#ifdef LINK_TO_CRYPTO
 
 #include <d0_blind_id/d0_blind_id.h>
 
@@ -285,7 +285,7 @@ static void Crypto_CloseLibrary (void)
 
 #endif
 
-#ifdef CRYPTO_RIJNDAEL_STATIC
+#ifdef LINK_TO_CRYPTO_RIJNDAEL
 
 #include <d0_blind_id/d0_rijndael.h>
 
@@ -735,7 +735,7 @@ int Crypto_RetrieveLocalKey(int keyid, char *keyfp, size_t keyfplen, char *idfp,
 		strlcpy(keyfp, pubkeys_fp64[keyid], keyfplen);
 	if(idfp)
 		if(pubkeys_havepriv[keyid])
-			strlcpy(idfp, pubkeys_priv_fp64[keyid], keyfplen);
+			strlcpy(idfp, pubkeys_priv_fp64[keyid], idfplen);
 	if(issigned)
 		*issigned = pubkeys_havesig[keyid];
 	return 1;

@@ -226,8 +226,6 @@ cvar_t r_hdr_irisadaptation_fade_up = {CVAR_SAVE, "r_hdr_irisadaptation_fade_up"
 cvar_t r_hdr_irisadaptation_fade_down = {CVAR_SAVE, "r_hdr_irisadaptation_fade_down", "0.5", "fade rate at which value adjusts to brightness"};
 cvar_t r_hdr_irisadaptation_radius = {CVAR_SAVE, "r_hdr_irisadaptation_radius", "15", "lighting within this many units of the eye is averaged"};
 
-cvar_t r_tcmod_normalize = {CVAR_SAVE, "r_tcmod_normalize", "2", "normalizes time input for tcMod to increases precision with big time values. A value of 0 disables normalization. A value of 1 enables normalization for one-tcmod textures, 2 enables normalization for all tcmods"};
-
 cvar_t r_smoothnormals_areaweighting = {0, "r_smoothnormals_areaweighting", "1", "uses significantly faster (and supposedly higher quality) area-weighted vertex normals and tangent vectors rather than summing normalized triangle normals and tangents"};
 
 cvar_t developer_texturelogging = {0, "developer_texturelogging", "0", "produces a textures.log file containing names of skins and map textures the engine tried to load"};
@@ -4444,7 +4442,6 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_hdr_irisadaptation_fade_down);
 	Cvar_RegisterVariable(&r_hdr_irisadaptation_radius);
 	Cvar_RegisterVariable(&r_smoothnormals_areaweighting);
-	Cvar_RegisterVariable(&r_tcmod_normalize);
 	Cvar_RegisterVariable(&developer_texturelogging);
 	Cvar_RegisterVariable(&gl_lightmaps);
 	Cvar_RegisterVariable(&r_test);
@@ -4516,7 +4513,11 @@ void GL_Init (void)
 	VID_CheckExtensions();
 
 	// LordHavoc: report supported extensions
+#ifdef CONFIG_MENU
 	Con_DPrintf("\nQuakeC extensions for server and client: %s\nQuakeC extensions for menu: %s\n", vm_sv_extensions, vm_m_extensions );
+#else
+	Con_DPrintf("\nQuakeC extensions for server and client: %s\n", vm_sv_extensions );
+#endif
 
 	// clear to black (loading plaque will be seen over this)
 	GL_Clear(GL_COLOR_BUFFER_BIT, NULL, 1.0f, 128);
@@ -8035,10 +8036,22 @@ static float R_EvaluateQ3WaveFunc(q3wavefunc_t func, const float *parms)
 static void R_tcMod_ApplyToMatrix(matrix4x4_t *texmatrix, q3shaderinfo_layer_tcmod_t *tcmod, int currentmaterialflags, int texture_have_one_tcmod)
 {
 	int w, h, idx;
-	double f;
-	double offsetd[2];
+	float shadertime;
+	float f;
+	float offsetd[2];
 	float tcmat[12];
 	matrix4x4_t matrix, temp;
+	// if shadertime exceeds about 9 hours (32768 seconds), just wrap it,
+	// it's better to have one huge fixup every 9 hours than gradual
+	// degradation over time which looks consistently bad after many hours.
+	//
+	// tcmod scroll in particular suffers from this degradation which can't be
+	// effectively worked around even with floor() tricks because we don't
+	// know if tcmod scroll is the last tcmod being applied, and for clampmap
+	// a workaround involving floor() would be incorrect anyway...
+	shadertime = rsurface.shadertime;
+	if (shadertime >= 32768.0f)
+		shadertime -= floor(rsurface.shadertime * (1.0f / 32768.0f)) * 32768.0f;
 	switch(tcmod->tcmod)
 	{
 		case Q3TCMOD_COUNT:
@@ -8054,24 +8067,20 @@ static void R_tcMod_ApplyToMatrix(matrix4x4_t *texmatrix, q3shaderinfo_layer_tcm
 			Matrix4x4_CreateTranslate(&matrix, 0, 0, 0);
 			break;
 		case Q3TCMOD_ROTATE:
-			f = tcmod->parms[0] * rsurface.shadertime;
 			Matrix4x4_CreateTranslate(&matrix, 0.5, 0.5, 0);
-			if (r_tcmod_normalize.integer == 2 || (r_tcmod_normalize.integer == 1 && texture_have_one_tcmod))
-				Matrix4x4_ConcatRotate(&matrix, (f / 360 - floor(f / 360)) * 360, 0, 0, 1);
-			else
-				Matrix4x4_ConcatRotate(&matrix, f, 0, 0, 1);
+			Matrix4x4_ConcatRotate(&matrix, tcmod->parms[0] * rsurface.shadertime, 0, 0, 1);
 			Matrix4x4_ConcatTranslate(&matrix, -0.5, -0.5, 0);
 			break;
 		case Q3TCMOD_SCALE:
 			Matrix4x4_CreateScale3(&matrix, tcmod->parms[0], tcmod->parms[1], 1);
 			break;
 		case Q3TCMOD_SCROLL:
+			// this particular tcmod is a "bug for bug" compatible one with regards to
+			// Quake3, the wrapping is unnecessary with our shadetime fix but quake3
+			// specifically did the wrapping and so we must mimic that...
 			offsetd[0] = tcmod->parms[0] * rsurface.shadertime;
 			offsetd[1] = tcmod->parms[1] * rsurface.shadertime;
-			if (r_tcmod_normalize.integer == 2 || (r_tcmod_normalize.integer == 1 && texture_have_one_tcmod))
-				Matrix4x4_CreateTranslate(&matrix, offsetd[0] - floor(offsetd[0]), offsetd[1] - floor(offsetd[1]), 0);
-			else
-				Matrix4x4_CreateTranslate(&matrix, offsetd[0], offsetd[1], 0);
+			Matrix4x4_CreateTranslate(&matrix, offsetd[0] - floor(offsetd[0]), offsetd[1] - floor(offsetd[1]), 0);
 			break;
 		case Q3TCMOD_PAGE: // poor man's animmap (to store animations into a single file, useful for HTTP downloaded textures)
 			w = (int) tcmod->parms[0];
@@ -10116,77 +10125,80 @@ void RSurf_PrepareVerticesForBatch(int batchneed, int texturenumsurfaces, const 
 		}
 	}
 
+	if (rsurface.batchtexcoordtexture2f)
+	{
 	// generate texcoords based on the chosen texcoord source
-	switch(rsurface.texture->tcgen.tcgen)
-	{
-	default:
-	case Q3TCGEN_TEXTURE:
-		break;
-	case Q3TCGEN_LIGHTMAP:
-//		rsurface.batchtexcoordtexture2f = R_FrameData_Alloc(batchnumvertices * sizeof(float[2]));
-//		rsurface.batchtexcoordtexture2f_vertexbuffer = NULL;
-//		rsurface.batchtexcoordtexture2f_bufferoffset = 0;
-		if (rsurface.batchtexcoordlightmap2f)
-			memcpy(rsurface.batchtexcoordlightmap2f, rsurface.batchtexcoordtexture2f, batchnumvertices * sizeof(float[2]));
-		break;
-	case Q3TCGEN_VECTOR:
-//		rsurface.batchtexcoordtexture2f = R_FrameData_Alloc(batchnumvertices * sizeof(float[2]));
-//		rsurface.batchtexcoordtexture2f_vertexbuffer = NULL;
-//		rsurface.batchtexcoordtexture2f_bufferoffset = 0;
-		for (j = 0;j < batchnumvertices;j++)
+		switch(rsurface.texture->tcgen.tcgen)
 		{
-			rsurface.batchtexcoordtexture2f[j*2+0] = DotProduct(rsurface.batchvertex3f + 3*j, rsurface.texture->tcgen.parms);
-			rsurface.batchtexcoordtexture2f[j*2+1] = DotProduct(rsurface.batchvertex3f + 3*j, rsurface.texture->tcgen.parms + 3);
+		default:
+		case Q3TCGEN_TEXTURE:
+			break;
+		case Q3TCGEN_LIGHTMAP:
+	//		rsurface.batchtexcoordtexture2f = R_FrameData_Alloc(batchnumvertices * sizeof(float[2]));
+	//		rsurface.batchtexcoordtexture2f_vertexbuffer = NULL;
+	//		rsurface.batchtexcoordtexture2f_bufferoffset = 0;
+			if (rsurface.batchtexcoordlightmap2f)
+				memcpy(rsurface.batchtexcoordtexture2f, rsurface.batchtexcoordlightmap2f, batchnumvertices * sizeof(float[2]));
+			break;
+		case Q3TCGEN_VECTOR:
+	//		rsurface.batchtexcoordtexture2f = R_FrameData_Alloc(batchnumvertices * sizeof(float[2]));
+	//		rsurface.batchtexcoordtexture2f_vertexbuffer = NULL;
+	//		rsurface.batchtexcoordtexture2f_bufferoffset = 0;
+			for (j = 0;j < batchnumvertices;j++)
+			{
+				rsurface.batchtexcoordtexture2f[j*2+0] = DotProduct(rsurface.batchvertex3f + 3*j, rsurface.texture->tcgen.parms);
+				rsurface.batchtexcoordtexture2f[j*2+1] = DotProduct(rsurface.batchvertex3f + 3*j, rsurface.texture->tcgen.parms + 3);
+			}
+			break;
+		case Q3TCGEN_ENVIRONMENT:
+			// make environment reflections using a spheremap
+			rsurface.batchtexcoordtexture2f = (float *)R_FrameData_Alloc(batchnumvertices * sizeof(float[2]));
+			rsurface.batchtexcoordtexture2f_vertexbuffer = NULL;
+			rsurface.batchtexcoordtexture2f_bufferoffset = 0;
+			for (j = 0;j < batchnumvertices;j++)
+			{
+				// identical to Q3A's method, but executed in worldspace so
+				// carried models can be shiny too
+
+				float viewer[3], d, reflected[3], worldreflected[3];
+
+				VectorSubtract(rsurface.localvieworigin, rsurface.batchvertex3f + 3*j, viewer);
+				// VectorNormalize(viewer);
+
+				d = DotProduct(rsurface.batchnormal3f + 3*j, viewer);
+
+				reflected[0] = rsurface.batchnormal3f[j*3+0]*2*d - viewer[0];
+				reflected[1] = rsurface.batchnormal3f[j*3+1]*2*d - viewer[1];
+				reflected[2] = rsurface.batchnormal3f[j*3+2]*2*d - viewer[2];
+				// note: this is proportinal to viewer, so we can normalize later
+
+				Matrix4x4_Transform3x3(&rsurface.matrix, reflected, worldreflected);
+				VectorNormalize(worldreflected);
+
+				// note: this sphere map only uses world x and z!
+				// so positive and negative y will LOOK THE SAME.
+				rsurface.batchtexcoordtexture2f[j*2+0] = 0.5 + 0.5 * worldreflected[1];
+				rsurface.batchtexcoordtexture2f[j*2+1] = 0.5 - 0.5 * worldreflected[2];
+			}
+			break;
 		}
-		break;
-	case Q3TCGEN_ENVIRONMENT:
-		// make environment reflections using a spheremap
-		rsurface.batchtexcoordtexture2f = (float *)R_FrameData_Alloc(batchnumvertices * sizeof(float[2]));
-		rsurface.batchtexcoordtexture2f_vertexbuffer = NULL;
-		rsurface.batchtexcoordtexture2f_bufferoffset = 0;
-		for (j = 0;j < batchnumvertices;j++)
+		// the only tcmod that needs software vertex processing is turbulent, so
+		// check for it here and apply the changes if needed
+		// and we only support that as the first one
+		// (handling a mixture of turbulent and other tcmods would be problematic
+		//  without punting it entirely to a software path)
+		if (rsurface.texture->tcmods[0].tcmod == Q3TCMOD_TURBULENT)
 		{
-			// identical to Q3A's method, but executed in worldspace so
-			// carried models can be shiny too
-
-			float viewer[3], d, reflected[3], worldreflected[3];
-
-			VectorSubtract(rsurface.localvieworigin, rsurface.batchvertex3f + 3*j, viewer);
-			// VectorNormalize(viewer);
-
-			d = DotProduct(rsurface.batchnormal3f + 3*j, viewer);
-
-			reflected[0] = rsurface.batchnormal3f[j*3+0]*2*d - viewer[0];
-			reflected[1] = rsurface.batchnormal3f[j*3+1]*2*d - viewer[1];
-			reflected[2] = rsurface.batchnormal3f[j*3+2]*2*d - viewer[2];
-			// note: this is proportinal to viewer, so we can normalize later
-
-			Matrix4x4_Transform3x3(&rsurface.matrix, reflected, worldreflected);
-			VectorNormalize(worldreflected);
-
-			// note: this sphere map only uses world x and z!
-			// so positive and negative y will LOOK THE SAME.
-			rsurface.batchtexcoordtexture2f[j*2+0] = 0.5 + 0.5 * worldreflected[1];
-			rsurface.batchtexcoordtexture2f[j*2+1] = 0.5 - 0.5 * worldreflected[2];
-		}
-		break;
-	}
-	// the only tcmod that needs software vertex processing is turbulent, so
-	// check for it here and apply the changes if needed
-	// and we only support that as the first one
-	// (handling a mixture of turbulent and other tcmods would be problematic
-	//  without punting it entirely to a software path)
-	if (rsurface.texture->tcmods[0].tcmod == Q3TCMOD_TURBULENT)
-	{
-		amplitude = rsurface.texture->tcmods[0].parms[1];
-		animpos = rsurface.texture->tcmods[0].parms[2] + rsurface.shadertime * rsurface.texture->tcmods[0].parms[3];
-//		rsurface.batchtexcoordtexture2f = R_FrameData_Alloc(batchnumvertices * sizeof(float[2]));
-//		rsurface.batchtexcoordtexture2f_vertexbuffer = NULL;
-//		rsurface.batchtexcoordtexture2f_bufferoffset = 0;
-		for (j = 0;j < batchnumvertices;j++)
-		{
-			rsurface.batchtexcoordtexture2f[j*2+0] += amplitude * sin(((rsurface.batchvertex3f[j*3+0] + rsurface.batchvertex3f[j*3+2]) * 1.0 / 1024.0f + animpos) * M_PI * 2);
-			rsurface.batchtexcoordtexture2f[j*2+1] += amplitude * sin(((rsurface.batchvertex3f[j*3+1]                                ) * 1.0 / 1024.0f + animpos) * M_PI * 2);
+			amplitude = rsurface.texture->tcmods[0].parms[1];
+			animpos = rsurface.texture->tcmods[0].parms[2] + rsurface.shadertime * rsurface.texture->tcmods[0].parms[3];
+	//		rsurface.batchtexcoordtexture2f = R_FrameData_Alloc(batchnumvertices * sizeof(float[2]));
+	//		rsurface.batchtexcoordtexture2f_vertexbuffer = NULL;
+	//		rsurface.batchtexcoordtexture2f_bufferoffset = 0;
+			for (j = 0;j < batchnumvertices;j++)
+			{
+				rsurface.batchtexcoordtexture2f[j*2+0] += amplitude * sin(((rsurface.batchvertex3f[j*3+0] + rsurface.batchvertex3f[j*3+2]) * 1.0 / 1024.0f + animpos) * M_PI * 2);
+				rsurface.batchtexcoordtexture2f[j*2+1] += amplitude * sin(((rsurface.batchvertex3f[j*3+1]                                ) * 1.0 / 1024.0f + animpos) * M_PI * 2);
+			}
 		}
 	}
 

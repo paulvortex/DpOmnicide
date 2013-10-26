@@ -199,6 +199,7 @@ extern cvar_t vid_touchscreen_showkeyboard;
 extern cvar_t vid_touchscreen_supportshowkeyboard;
 extern cvar_t vid_stick_mouse;
 extern cvar_t vid_resizable;
+extern cvar_t vid_desktopfullscreen;
 extern cvar_t vid_minwidth;
 extern cvar_t vid_minheight;
 extern cvar_t vid_sRGB;
@@ -298,6 +299,7 @@ typedef struct
 	int pixelheight_num, pixelheight_denom;
 }
 vid_mode_t;
+vid_mode_t *VID_GetDesktopMode(void);
 size_t VID_ListModes(vid_mode_t *modes, size_t maxcount);
 size_t VID_SortModes(vid_mode_t *modes, size_t count, qboolean usebpp, qboolean userefreshrate, qboolean useaspect);
 void VID_Soft_SharedSetup(void);
