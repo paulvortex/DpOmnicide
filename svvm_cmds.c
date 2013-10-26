@@ -225,6 +225,11 @@ const char *vm_sv_extensions =
 "TW_SV_STEPCONTROL "
 "ZQ_PAUSE "
 //"EXT_CSQC " // not ready yet
+#ifdef DP_SMALLMEMORY
+"DP_BUILD_SMALLMEMORY "
+#elif defined(DP_DEVELOPER_BUILD)
+"DP_BUILD_DEVELOPER "
+#endif
 ;
 
 /*

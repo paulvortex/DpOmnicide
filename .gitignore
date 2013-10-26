@@ -161,3 +161,5 @@ pip-log.txt
 
 # Mac crap
 .DS_Store
+/Release-darkplaces-sdl-dev
+/Release-darkplaces-sdl

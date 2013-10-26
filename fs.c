@@ -1983,6 +1983,10 @@ void FS_Init (void)
 		strlcat(fs_basedir, "/", sizeof(fs_basedir));
 
 	// Add the personal game directory
+#ifdef DP_DEVELOPER_BUILD
+	// developer build - no userdir
+	*fs_userdir = 0; // user wants roaming installation, no userdir
+#else
 	if((i = COM_CheckParm("-userdir")) && i < com_argc - 1)
 		dpsnprintf(fs_userdir, sizeof(fs_userdir), "%s/", com_argv[i+1]);
 	else if (COM_CheckParm("-nohome"))
@@ -2030,6 +2034,7 @@ void FS_Init (void)
 		FS_ChooseUserDir((userdirmode_t)dirmode, fs_userdir, sizeof(fs_userdir));
 		Con_DPrintf("userdir %i is the winner\n", dirmode);
 	}
+#endif
 
 	// if userdir equal to basedir, clear it to avoid confusion later
 	if (!strcmp(fs_basedir, fs_userdir))
@@ -2598,12 +2603,15 @@ qfile_t* FS_OpenRealFile (const char* filepath, const char* mode, qboolean quiet
 {
 	char real_path [MAX_OSPATH];
 
+#ifdef DP_DEVELOPER_BUILD
+	// developer mode - any path are allowed for reading
+	if (strcmp(mode, "rb"))
+#endif
 	if (FS_CheckNastyPath(filepath, false))
 	{
 		Con_Printf("FS_OpenRealFile(\"%s\", \"%s\", %s): nasty filename rejected\n", filepath, mode, quiet ? "true" : "false");
 		return NULL;
 	}
-
 	dpsnprintf (real_path, sizeof (real_path), "%s/%s", fs_gamedir, filepath); // this is never a vpack
 
 	// If the file is opened in "write", "append", or "read/write" mode,

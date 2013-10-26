@@ -1834,6 +1834,26 @@ void VM_fopen(prvm_prog_t *prog)
 		modestring = "w";
 		prog->openfiles[filenum] = FS_OpenRealFile(va(vabuf, sizeof(vabuf), "data/%s", filename), modestring, false);
 		break;
+#ifdef DP_DEVELOPER_BUILD
+	case 16: // FILE_READ + FILE_DEVELOPER
+		modestring = "rb";
+		prog->openfiles[filenum] = FS_OpenRealFile(va(vabuf, sizeof(vabuf), "%s", filename), modestring, false);
+		break;
+	case 17: // FILE_APPEND + FILE_DEVELOPER
+		modestring = "a";
+		prog->openfiles[filenum] = FS_OpenRealFile(va(vabuf, sizeof(vabuf), "%s", filename), modestring, false);
+		break;
+	case 18: // FILE_WRITE + FILE_DEVELOPER
+		modestring = "w";
+		prog->openfiles[filenum] = FS_OpenRealFile(va(vabuf, sizeof(vabuf), "%s", filename), modestring, false);
+		break;
+	case 19: // FILE_DEVELOPER_DELETE
+		modestring = "rb";
+		prog->openfiles[filenum] = FS_OpenRealFile(va(vabuf, sizeof(vabuf), "%s", filename), modestring, false);
+		if (prog->openfiles[filenum] != NULL)
+			FS_RemoveOnClose(prog->openfiles[filenum]);
+		break;
+#endif
 	default:
 		PRVM_G_FLOAT(OFS_RETURN) = -3;
 		VM_Warning(prog, "VM_fopen: %s: no such mode %i (valid: 0 = read, 1 = append, 2 = write)\n", prog->name, mode);

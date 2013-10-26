@@ -48,6 +48,11 @@ const char *vm_m_extensions =
 "DP_QC_URI_POST "
 "DP_QC_WHICHPACK "
 "FTE_STRINGS "
+#ifdef DP_SMALLMEMORY
+"DP_BUILD_SMALLMEMORY "
+#elif defined(DP_DEVELOPER_BUILD)
+"DP_BUILD_DEVELOPER "
+#endif
 ;
 
 /*

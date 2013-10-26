@@ -120,6 +120,73 @@ extern char engineversion[128];
 #define SERVERLIST_TOTALSIZE		1024
 #define SERVERLIST_ANDMASKCOUNT		5
 #define SERVERLIST_ORMASKCOUNT		5
+
+#elif defined(DP_DEVELOPER_BUILD)
+
+#define	MAX_INPUTLINE			32768
+#define	CON_TEXTSIZE			2097152
+#define	CON_MAXLINES			16384
+#define	HIST_TEXTSIZE			262144
+#define	HIST_MAXLINES			4096
+#define	MAX_ALIAS_NAME			32
+#define	CMDBUFSIZE				655360
+#define	MAX_ARGS				80
+#define	NET_MAXMESSAGE			65536
+#define	MAX_PACKETFRAGMENT		1024
+#define	MAX_EDICTS				262144
+#define	MAX_MODELS				16384
+#define	MAX_SOUNDS				4096
+#define	MAX_LIGHTSTYLES			256
+#define	MAX_STYLESTRING			64
+#define	MAX_SCOREBOARD			255
+#define	MAX_SCOREBOARDNAME		128
+#define	MAX_USERINFO_STRING		1280
+#define	MAX_SERVERINFO_STRING	1280
+#define	MAX_LOCALINFO_STRING	32768
+#define	CL_MAX_USERCMDS			256
+#define	CVAR_HASHSIZE			65536
+#define	M_MAX_EDICTS			32768
+#define	MAX_DEMOS				8
+#define	MAX_DEMONAME			16
+#define	MAX_SAVEGAMES			12
+#define	SAVEGAME_COMMENT_LENGTH	39
+#define	MAX_CLIENTNETWORKEYES	16
+#define	MAX_LEVELNETWORKEYES	512
+#define	MAX_OCCLUSION_QUERIES	4096
+#define CRYPTO_HOSTKEY_HASHSIZE 819
+#define MAX_NETWM_ICON 352822
+#define	MAX_WATERPLANES			16
+#define	MAX_CUBEMAPS			1024
+#define	MAX_EXPLOSIONS			64
+#define	MAX_DLIGHTS				4096
+#define	MAX_CACHED_PICS			4096
+#define	CACHEPICHASHSIZE		256
+#define	MAX_PARTICLEEFFECTNAME	1024
+#define	MAX_PARTICLEEFFECTINFO	16384
+#define	MAX_PARTICLETEXTURES	256
+#define	MAXCLVIDEOS				65
+#define	MAX_DYNAMIC_TEXTURE_COUNT	64
+#define	MAX_MAP_LEAFS			65536
+#define	MAXTRACKS				256
+#define	MAX_DYNAMIC_CHANNELS	512
+#define	MAX_CHANNELS			1028
+#define	MODLIST_TOTALSIZE		256
+#define	MAX_FAVORITESERVERS		256
+#define	MAX_DECALSYSTEM_QUEUE	1024
+#define	PAINTBUFFER_SIZE		2048
+#define	MAX_BINDMAPS			8
+#define	MAX_PARTICLES_INITIAL	8192
+#define	MAX_PARTICLES			1048576
+#define	MAX_DECALS_INITIAL		8192
+#define	MAX_DECALS				1048576
+#define	MAX_ENITIES_INITIAL		256
+#define	MAX_STATICENTITIES		1024
+#define	MAX_EFFECTS				256
+#define	MAX_BEAMS				256
+#define	MAX_TEMPENTITIES		4096
+#define SERVERLIST_TOTALSIZE		2048
+#define SERVERLIST_ANDMASKCOUNT		16
+#define SERVERLIST_ORMASKCOUNT		16
 #else
 #define	MAX_INPUTLINE			16384 ///< maximum length of console commandline, QuakeC strings, and many other text processing buffers
 #define	CON_TEXTSIZE			1048576 ///< max scrollback buffer characters in console
@@ -132,7 +199,7 @@ extern char engineversion[128];
 
 #define	NET_MAXMESSAGE			65536 ///< max reliable packet size (sent as multiple fragments of MAX_PACKETFRAGMENT)
 #define	MAX_PACKETFRAGMENT		1024 ///< max length of packet fragment
-#define	MAX_EDICTS				131072 ///< max number of objects in game world at once (32768 protocol limit)
+#define	MAX_EDICTS				32768 ///< max number of objects in game world at once (32768 protocol limit)
 #define	MAX_MODELS				8192 ///< max number of models loaded at once (including during level transitions)
 #define	MAX_SOUNDS				4096 ///< max number of sounds loaded at once
 #define	MAX_LIGHTSTYLES			256 ///< max flickering light styles in level (note: affects savegame format)

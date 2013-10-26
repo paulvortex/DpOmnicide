@@ -2544,10 +2544,92 @@ void(float pause) setpause = #531;
 //
 //Note: it is worth considering that network-related functions may be called during the pause (including customizeentityforclient for example), and it is also important to consider the continued use of the KRIMZON_SV_PARSECLIENTCOMMAND extension while paused (chatting players, etc), players may also join/leave during the pause.  In other words, the only things that are not called are think and other time-related functions.
 
+//DP_BUILD_DEVELOPER
+//idea: VorteX
+//darkplaces implementation: VorteX
+//constant definition:
+const float FILE_REAL_READ = 16; // allowed to read from anywhere
+const float FILE_REAL_APPEND = 17; // dont add data/ to file path, can write any file in gamedir
+const float FILE_REAL_WRITE = 18; // dont add data/ to file path, can write any file in gamedir
+const float FILE_REAL_DELETE = 19; // returns file handle if file are found, deletes file after close
+//description: indicates that engine is build with special options:
+//1) increased limits:
+//    MAX_INPUTLINE=32768 // maximum length of console commandline, QuakeC strings, and many other text processing buffers
+//    MAX_EDICTS=262144 // max number of objects in game world at once (32768 protocol limit)
+//    MAX_MODELS=16384 // max number of models loaded at once (including during level transitions)
+//    MAX_SOUNDS=8192 // max number of sounds loaded at once
+//    MAX_PARTICLEEFFECTNAME=1024 // maximum number of unique names of particle effects (for particleeffectnum)
+//    MAX_PARTICLEEFFECTINFO=16384 // maximum number of unique particle effects (each name may associate with several of these)
+//    MAX_DLIGHTS=4096 // max number of dynamic lights (rocket flashes, etc) in scene at once
+//    M_MAX_EDICTS=65536 // max objects in menu vm
+//2) no home directory (equivalent to -nohome switch)
+//3) new file open modes to read and save real files, pak/pk3 files are completely ignored for this modes
 
-
+//DP_BUILD_SMALLMEMORY
+//idea: LordHavoc
+//darkplaces implementation: LordHavoc
+//description: indicates that engine is build with low memory requirements:
+//1) decreased limits:
+//    MAX_INPUTLINE=1024 // maximum length of console commandline, QuakeC strings, and many other text processing buffers
+//    CON_TEXTSIZE=16384 // max scrollback buffer characters in console
+//    CON_MAXLINES=256 // max scrollback buffer lines in console
+//    MAX_ALIAS_NAME=32 // max length for console aliases
+//    MAX_EDICTS=4096 // max number of objects in game world at once
+//    MAX_MODELS=1024 // max number of models loaded at once (including during level transitions)
+//    MAX_SOUNDS=1024 // max number of sounds loaded at once
+//    MAX_LIGHTSTYLES=64 // max flickering light styles in level (note: affects savegame format)
+//    MAX_STYLESTRING=16 // max length of flicker pattern for light style
+//    MAX_SCOREBOARD=32 // max number of players in game at once (255 protocol limit)
+//    MAX_SCOREBOARDNAME=128 // max length of player name in game
+//    MAX_USERINFO_STRING=196 // matches QuakeWorld
+//    MAX_SERVERINFO_STRING=512 // matches QuakeWorld
+//    M_MAX_EDICTS=4096 // max objects in menu vm
+//    MAX_DEMOS=8 // max demos provided to demos command
+//    MAX_DEMONAME=16 // max demo name length for demos command
+//    MAX_SAVEGAMES=12 // max savegames listed in savegame menu
+//    MAX_CLIENTNETWORKEYES=2 // max number of locations that can be added to pvs when culling network entities
+//    MAX_LEVELNETWORKEYES=0 // no portal support
+//    MAX_WATERPLANES=2 // max number of water planes visible (each one causes additional view renders)
+//    MAX_EXPLOSIONS=8 // max number of explosion shell effects active at once (not particle related)
+//    MAX_DLIGHTS=16 // max number of dynamic lights (rocket flashes, etc) in scene at once
+//    MAX_CACHED_PICS=1024 // max number of 2D pics loaded at once
+//    MAX_PARTICLEEFFECTNAME=256 // maximum number of unique names of particle effects (for particleeffectnum)
+//    MAX_PARTICLEEFFECTINFO=1024 // maximum number of unique particle effects (each name may associate with several of these)
+//    MAX_PARTICLETEXTURES=256 // maximum number of unique particle textures in the particle font
+//    MAXCLVIDEOS=1 // maximum number of video streams being played back at once
+//    MAX_DYNAMIC_TEXTURE_COUNT=2 // maximum number of dynamic textures (web browsers, playvideo, etc)
+//    MAX_MAP_LEAFS=8192 // maximum number of BSP leafs in world (8192 in Quake)
+//    MAX_PARTICLES=8192 // upper limit on cl.particles size
+//    MAX_DECALS=1024 // upper limit on cl.decals size
+//    MAX_STATICENTITIES=256 // limit on size of cl.static_entities
+//    MAX_EFFECTS=16 // limit on size of cl.effects
+//    MAX_BEAMS=16 // limit on size of cl.beams
+//    MAX_TEMPENTITIES=256 // max number of temporary models visible per frame (certain sprite effects, certain types of CSQC entities also use this)
+//2) QC profiling disabled
 
 // EXPERIMENTAL (not finalized) EXTENSIONS:
+
+//DP_QC_STRINGBUFFERS_EXT_WIP
+//idea: VorteX
+//darkplaces implementation: VorteX
+//constant definitions:
+const float MATCH_AUTO = 0;
+const float MATCH_WHOLE = 1;
+const float MATCH_LEFT = 2;
+const float MATCH_RIGHT = 3;
+const float MATCH_MIDDLE = 4;
+const float MATCH_PATTERN = 5;
+//builtin definitions:
+float(string filename, float bufhandle) buf_loadfile = #535; // return 0/1
+float(float filehandle, float bufhandle, float startpos, float numstrings) buf_writefile = #536; // return 0/1
+float(float bufhandle, string match, float matchrule, float startpos, float step) bufstr_find = #537; // returns string index
+float(string s, string pattern, float matchrule) matchpattern = #538; // returns 0/1
+float(string s, string pattern, float matchrule, float pos) matchpatternofs = #538;
+//description:
+//provides a set of functions to manipulate with string buffers
+//pattern wildcards: * - any character (or no characters), ? - any 1 character
+//Warning: This extension is work-in-progress, it may be changed/revamped/removed at any time
+//wip note: UTF8 is not supported
 
 //DP_CRYPTO
 //idea: divVerent
