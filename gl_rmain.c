@@ -890,9 +890,10 @@ enum
 	SHADERSTATICPARM_SHADOWSAMPLER = 10, ///< sampler
 	SHADERSTATICPARM_CELSHADING = 11, ///< celshading (alternative diffuse and specular math)
 	SHADERSTATICPARM_CELOUTLINES = 12, ///< celoutline (depth buffer analysis to produce outlines)
-	SHADERSTATICPARM_SUNLIGHT = 13 // Blood Omnicide sunlight
+	SHADERSTATICPARM_FXAA = 13, ///< fast approximate anti aliasing
+	SHADERSTATICPARM_SUNLIGHT = 14 // Blood Omnicide sunlight
 };
-#define SHADERSTATICPARMS_COUNT 13
+#define SHADERSTATICPARMS_COUNT 14
 
 static const char *shaderstaticparmstrings_list[SHADERSTATICPARMS_COUNT];
 static int shaderstaticparms_count = 0;
@@ -926,6 +927,8 @@ qboolean R_CompileShader_CheckStaticParms(void)
 		if (r_glsl_postprocess_uservec4_enable.integer)
 			R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_POSTPROCESS_USERVEC4);
 	}
+	if (r_fxaa.integer)
+		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_FXAA);
 	if (r_glsl_offsetmapping_lod.integer && r_glsl_offsetmapping_lod_distance.integer > 0)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_OFFSETMAPPING_USELOD);
 
@@ -968,6 +971,7 @@ static void R_CompileShader_AddStaticParms(unsigned int mode, unsigned int permu
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_SHADOWSAMPLER, "USESHADOWSAMPLER");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_CELSHADING, "USECELSHADING");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_CELOUTLINES, "USECELOUTLINES");
+	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_FXAA, "USEFXAA");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_SUNLIGHT, "USESUNLIGHT");
 }
 

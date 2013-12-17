@@ -4,7 +4,7 @@
 	Version="9,00"
 	Name="darkplaces-sdl"
 	ProjectGUID="{7470C8B3-FCA7-42D3-9909-5F9E735C7C51}"
-	RootNamespace="darkplacessdl"
+	RootNamespace="darkplacessdldev"
 	Keyword="Win32Proj"
 	TargetFrameworkVersion="196613"
 	>
@@ -295,7 +295,6 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				ShowProgress="1"
 				OutputFile="../bo1/omnicide64.exe"
 				LinkIncremental="1"
 				AdditionalLibraryDirectories=".\Dependencies\SDL64\lib"
