@@ -1888,6 +1888,15 @@ typedef struct r_refdef_scene_s {
 	rtlight_t templights[MAX_DLIGHTS];
 	int numlights;
 
+	// sunlight
+	qboolean sunlight;
+	vec3_t   suncolor;
+	vec3_t   sundir;
+	float    sunintensity;
+	qboolean suncorona;
+	float    suncoronaintensity;
+	float    suncoronasize;
+
 	// intensities for light styles right now, controls rtlights
 	float rtlightstylevalue[MAX_LIGHTSTYLES];	// float fraction of base light value
 	// 8.8bit fixed point intensities for light styles

@@ -431,6 +431,8 @@ typedef struct rsurfacestate_s
 	float fogplane[4];
 	float fogheightfade;
 	float fogplaneviewdist;
+	// sun direction transformed by entity matrix
+	vec3_t sundir;
 
 	// rtlight rendering
 	// light currently being rendered
@@ -590,11 +592,14 @@ void R_SetupView(qboolean allowwaterclippingplane, int fbo, rtexture_t *depthtex
 extern const float r_screenvertex3f[12];
 extern cvar_t r_shadows;
 extern cvar_t r_shadows_darken;
-extern cvar_t r_shadows_drawafterrtlighting;
+extern cvar_t r_shadows_drawaftertransparent;
+extern cvar_t r_shadows_quantize_movement;
+extern cvar_t r_shadows_quantize_throwdirection;
 extern cvar_t r_shadows_castfrombmodels;
 extern cvar_t r_shadows_throwdistance;
 extern cvar_t r_shadows_throwdirection;
 extern cvar_t r_shadows_focus;
+extern cvar_t r_shadows_focus2;
 extern cvar_t r_shadows_shadowmapscale;
 extern cvar_t r_shadows_shadowmapbias;
 extern cvar_t r_shadows_castfromworld;

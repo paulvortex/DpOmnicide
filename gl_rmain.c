@@ -117,10 +117,13 @@ cvar_t r_shadows = {CVAR_SAVE, "r_shadows", "0", "casts fake stencil shadows fro
 cvar_t r_shadows_darken = {CVAR_SAVE, "r_shadows_darken", "0.5", "how much shadowed areas will be darkened"};
 cvar_t r_shadows_throwdistance = {CVAR_SAVE, "r_shadows_throwdistance", "500", "how far to cast shadows from models"};
 cvar_t r_shadows_throwdirection = {CVAR_SAVE, "r_shadows_throwdirection", "0 0 -1", "override throwing direction for r_shadows 2"};
-cvar_t r_shadows_drawafterrtlighting = {CVAR_SAVE, "r_shadows_drawafterrtlighting", "0", "draw fake shadows AFTER realtime lightning is drawn. May be useful for simulating fast sunlight on large outdoor maps with only one noshadow rtlight. The price is less realistic appearance of dynamic light shadows."};
+cvar_t r_shadows_drawaftertransparent = {CVAR_SAVE, "r_shadows_drawaftertransparent", "0", "draw fake shadows AFTER transparent entities which make them able to receive shadow."};
+cvar_t r_shadows_quantize_movement = {CVAR_SAVE, "r_shadows_quantize_movement", "0", "Prevent shadow edge flickering during player movement by quantizing camera origin update. A value controls of how much shadowmap units to quantize for."};
+cvar_t r_shadows_quantize_throwdirection = {CVAR_SAVE, "r_shadows_quantize_throwdirection", "0", "Prevent shadow edge flickering on throwdirection vector by quantizing it's angles. A value controls of how much degrees to quantize for."};
 cvar_t r_shadows_castfrombmodels = {CVAR_SAVE, "r_shadows_castfrombmodels", "0", "do cast shadows from bmodels"};
 cvar_t r_shadows_castfromworld = {CVAR_SAVE, "r_shadows_castfromworld", "0", "do cast shadows from world, only supported for shadowmapping"};
-cvar_t r_shadows_focus = {CVAR_SAVE, "r_shadows_focus", "0 0 0", "offset the shadowed area focus"};
+cvar_t r_shadows_focus = {CVAR_SAVE, "r_shadows_focus", "0 0 0", "offset the shadowed area focus in camera forward/right/up axes"};
+cvar_t r_shadows_focus2 = {CVAR_SAVE, "r_shadows_focus2", "0 0 0", "offset the shadowed area focus in world space axes"};
 cvar_t r_shadows_shadowmapscale = {CVAR_SAVE, "r_shadows_shadowmapscale", "1", "increases shadowmap quality (multiply global shadowmap precision) for fake shadows. Needs shadowmapping ON."};
 cvar_t r_shadows_shadowmapbias = {CVAR_SAVE, "r_shadows_shadowmapbias", "-1", "sets shadowmap bias for fake shadows. -1 sets the value of r_shadow_shadowmapping_bias. Needs shadowmapping ON."};
 cvar_t r_q1bsp_skymasking = {0, "r_q1bsp_skymasking", "1", "allows sky polygons in quake1 maps to obscure other geometry"};
@@ -189,6 +192,9 @@ cvar_t r_sunlight = {CVAR_SAVE, "r_sunlight", "0", "Enables sunlight GLSL render
 cvar_t r_sunlight_dir = {CVAR_SAVE, "r_sunlight_dir", "0 0 1", "Sun light direction"};
 cvar_t r_sunlight_color = {CVAR_SAVE, "r_sunlight_color", "1 1 1", "Sun light rgb color"};
 cvar_t r_sunlight_intensity = {CVAR_SAVE, "r_sunlight_intensity", "1", "Sun light intensity mod"};
+cvar_t r_sunlight_corona = {CVAR_SAVE, "r_sunlight_corona", "1", "Enables corona effect for sunlight."};
+cvar_t r_sunlight_coronaintensity = {CVAR_SAVE, "r_sunlight_coronaintensity", "1", "Corona intensity for sunlight."};
+cvar_t r_sunlight_coronasize = {CVAR_SAVE, "r_sunlight_coronasize", "1", "Corona size for sunlight."};
 
 cvar_t r_water = {CVAR_SAVE, "r_water", "0", "whether to use reflections and refraction on water surfaces (note: r_wateralpha must be set below 1)"};
 cvar_t r_water_clippingplanebias = {CVAR_SAVE, "r_water_clippingplanebias", "1", "a rather technical setting which avoids black pixels around water edges"};
@@ -679,7 +685,7 @@ shaderpermutationinfo_t shaderpermutationinfo[SHADERPERMUTATION_COUNT] =
 	{"#define USEDEFERREDLIGHTMAP\n", " deferredlightmap"},
 	{"#define USEALPHAKILL\n", " alphakill"},
 	{"#define USEREFLECTCUBE\n", " reflectcube"},
-	{"#define USENORMALMAPSCROLLBLEND\n", " normalmapscrollblend"},
+	{"#define USESCROLLBLEND\n", " scrollblend"},
 	{"#define USEBOUNCEGRID\n", " bouncegrid"},
 	{"#define USEBOUNCEGRIDDIRECTIONAL\n", " bouncegriddirectional"}, // TODO make this a static parm
 	{"#define USETRIPPY\n", " trippy"},
@@ -858,7 +864,7 @@ typedef struct r_glsl_permutation_s
 	int loc_ModelToReflectCube;
 	int loc_ShadowMapMatrix;
 	int loc_BloomColorSubtract;
-	int loc_NormalmapScrollBlend;
+	int loc_ScrollBlend;
 	int loc_BounceGridMatrix;
 	int loc_BounceGridIntensity;
 	int loc_SunDir; // vortex: Blood Omnicide sunlight
@@ -891,7 +897,7 @@ enum
 	SHADERSTATICPARM_CELSHADING = 11, ///< celshading (alternative diffuse and specular math)
 	SHADERSTATICPARM_CELOUTLINES = 12, ///< celoutline (depth buffer analysis to produce outlines)
 	SHADERSTATICPARM_FXAA = 13, ///< fast approximate anti aliasing
-	SHADERSTATICPARM_SUNLIGHT = 14 // Blood Omnicide sunlight
+	SHADERSTATICPARM_SUNLIGHT = 14 // sunlight
 };
 #define SHADERSTATICPARMS_COUNT 14
 
@@ -1283,7 +1289,7 @@ static void R_GLSL_CompilePermutation(r_glsl_permutation_t *p, unsigned int mode
 		p->loc_ModelToReflectCube         = qglGetUniformLocation(p->program, "ModelToReflectCube");
 		p->loc_ShadowMapMatrix            = qglGetUniformLocation(p->program, "ShadowMapMatrix");
 		p->loc_BloomColorSubtract         = qglGetUniformLocation(p->program, "BloomColorSubtract");
-		p->loc_NormalmapScrollBlend       = qglGetUniformLocation(p->program, "NormalmapScrollBlend");
+		p->loc_ScrollBlend                = qglGetUniformLocation(p->program, "ScrollBlend");
 		p->loc_BounceGridMatrix           = qglGetUniformLocation(p->program, "BounceGridMatrix");
 		p->loc_BounceGridIntensity        = qglGetUniformLocation(p->program, "BounceGridIntensity");
 		// vortex: Blood Omnicide sunlight
@@ -1511,7 +1517,7 @@ typedef enum D3DPSREGISTER_e
 	D3DPSREGISTER_BloomColorSubtract = 43,
 	D3DPSREGISTER_ViewToLight = 44, // float4x4
 	D3DPSREGISTER_ModelToReflectCube = 48, // float4x4
-	D3DPSREGISTER_NormalmapScrollBlend = 52,
+	D3DPSREGISTER_ScrollBlend = 52,
 	D3DPSREGISTER_OffsetMapping_LodDistance = 53,
 	D3DPSREGISTER_OffsetMapping_Bias = 54,
 	// next at 54
@@ -2227,8 +2233,8 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 		permutation |= SHADERPERMUTATION_TRIPPY;
 	if (rsurface.texture->currentmaterialflags & MATERIALFLAG_ALPHATEST)
 		permutation |= SHADERPERMUTATION_ALPHAKILL;
-	if (rsurface.texture->r_water_waterscroll[0] && rsurface.texture->r_water_waterscroll[1])
-		permutation |= SHADERPERMUTATION_NORMALMAPSCROLLBLEND; // todo: make generic
+	if (rsurface.texture->scrollblend[0] && rsurface.texture->scrollblend[1])
+		permutation |= SHADERPERMUTATION_SCROLLBLEND; // todo: make generic
 	if (rsurfacepass == RSURFPASS_BACKGROUND)
 	{
 		// distorted background
@@ -2684,7 +2690,7 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			hlslPSSetParameter1f(D3DPSREGISTER_ReflectOffset, rsurface.texture->reflectmin);
 			hlslPSSetParameter1f(D3DPSREGISTER_SpecularPower, (rsurface.texture->specularpower - 1.0f) * (r_shadow_glossexact.integer ? 0.25f : 1.0f));
 			if (mode == SHADERMODE_WATER)
-				hlslPSSetParameter2f(D3DPSREGISTER_NormalmapScrollBlend, rsurface.texture->r_water_waterscroll[0], rsurface.texture->r_water_waterscroll[1]);
+				hlslPSSetParameter3f(D3DPSREGISTER_ScrollBlend, rsurface.texture->scrollblend[0], rsurface.texture->scrollblend[1], , rsurface.texture->scrollblend[2]);
 		}
 		hlslPSSetParameter2f(D3DPSREGISTER_ShadowMap_TextureScale, r_shadow_shadowmap_texturescale[0], r_shadow_shadowmap_texturescale[1]);
 		hlslPSSetParameter4f(D3DPSREGISTER_ShadowMap_Parameters, r_shadow_shadowmap_parameters[0], r_shadow_shadowmap_parameters[1], r_shadow_shadowmap_parameters[2], r_shadow_shadowmap_parameters[3]);
@@ -2846,7 +2852,6 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			if (r_glsl_permutation->loc_ReflectFactor >= 0) qglUniform1f(r_glsl_permutation->loc_ReflectFactor, rsurface.texture->reflectmax - rsurface.texture->reflectmin);
 			if (r_glsl_permutation->loc_ReflectOffset >= 0) qglUniform1f(r_glsl_permutation->loc_ReflectOffset, rsurface.texture->reflectmin);
 			if (r_glsl_permutation->loc_SpecularPower >= 0) qglUniform1f(r_glsl_permutation->loc_SpecularPower, rsurface.texture->specularpower * (r_shadow_glossexact.integer ? 0.25f : 1.0f) - 1.0f);
-			if (r_glsl_permutation->loc_NormalmapScrollBlend >= 0) qglUniform2f(r_glsl_permutation->loc_NormalmapScrollBlend, rsurface.texture->r_water_waterscroll[0], rsurface.texture->r_water_waterscroll[1]);
 		}
 		if (r_glsl_permutation->loc_TexMatrix >= 0) {Matrix4x4_ToArrayFloatGL(&rsurface.texture->currenttexmatrix, m16f);qglUniformMatrix4fv(r_glsl_permutation->loc_TexMatrix, 1, false, m16f);}
 		if (r_glsl_permutation->loc_BackgroundTexMatrix >= 0) {Matrix4x4_ToArrayFloatGL(&rsurface.texture->currentbackgroundtexmatrix, m16f);qglUniformMatrix4fv(r_glsl_permutation->loc_BackgroundTexMatrix, 1, false, m16f);}
@@ -2932,13 +2937,11 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			}
 		}
 		if (r_glsl_permutation->tex_Texture_BounceGrid  >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_BounceGrid, r_shadow_bouncegridtexture);
-		if (r_glsl_permutation->loc_SunDir >= 0 && r_glsl_permutation->loc_SunColor >= 0)
+		if (r_glsl_permutation->loc_ScrollBlend >= 0) qglUniform3f(r_glsl_permutation->loc_ScrollBlend, rsurface.texture->scrollblend[0], rsurface.texture->scrollblend[1], rsurface.texture->scrollblend[2]);
+		if (r_refdef.scene.sunlight) 
 		{
-			// VorteX: Blood Omnicide sun light
-			float sundir[3];
-			Matrix4x4_Transform3x3(&rsurface.entity->inversematrix, r_sunlight_dir.vector, sundir);
-			qglUniform4f(r_glsl_permutation->loc_SunDir, sundir[0], sundir[1], sundir[2], 0);
-			qglUniform4f(r_glsl_permutation->loc_SunColor, r_sunlight_color.vector[0], r_sunlight_color.vector[1], r_sunlight_color.vector[2], r_sunlight_intensity.value);
+			if (r_glsl_permutation->loc_SunDir >= 0) { qglUniform4f(r_glsl_permutation->loc_SunDir, rsurface.sundir[0], rsurface.sundir[1], rsurface.sundir[2], 0.0); }
+			if (r_glsl_permutation->loc_SunColor >= 0) qglUniform4f(r_glsl_permutation->loc_SunColor, r_refdef.scene.suncolor[0], r_refdef.scene.suncolor[1], r_refdef.scene.suncolor[2], r_refdef.scene.sunintensity);
 		}
 		CHECKGLERROR
 		break;
@@ -3001,7 +3004,7 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			DPSOFTRAST_Uniform1f(DPSOFTRAST_UNIFORM_ReflectFactor, rsurface.texture->reflectmax - rsurface.texture->reflectmin);
 			DPSOFTRAST_Uniform1f(DPSOFTRAST_UNIFORM_ReflectOffset, rsurface.texture->reflectmin);
 			DPSOFTRAST_Uniform1f(DPSOFTRAST_UNIFORM_SpecularPower, rsurface.texture->specularpower * (r_shadow_glossexact.integer ? 0.25f : 1.0f) - 1.0f);
-			DPSOFTRAST_Uniform2f(DPSOFTRAST_UNIFORM_NormalmapScrollBlend, rsurface.texture->r_water_waterscroll[0], rsurface.texture->r_water_waterscroll[1]);
+			DPSOFTRAST_Uniform3f(DPSOFTRAST_UNIFORM_ScrollBlend, rsurface.texture->scrollblend[0], rsurface.texture->scrollblend[1], rsurface.texture->scrollblend[2]);
 		}
 		{Matrix4x4_ToArrayFloatGL(&rsurface.texture->currenttexmatrix, m16f);DPSOFTRAST_UniformMatrix4fv(DPSOFTRAST_UNIFORM_TexMatrixM1, 1, false, m16f);}
 		{Matrix4x4_ToArrayFloatGL(&rsurface.texture->currentbackgroundtexmatrix, m16f);DPSOFTRAST_UniformMatrix4fv(DPSOFTRAST_UNIFORM_BackgroundTexMatrixM1, 1, false, m16f);}
@@ -4354,12 +4357,17 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_fullbright);
 	Cvar_RegisterVariable(&r_shadows);
 	Cvar_RegisterVariable(&r_shadows_darken);
-	Cvar_RegisterVariable(&r_shadows_drawafterrtlighting);
+	Cvar_RegisterVariable(&r_shadows_drawaftertransparent);
 	Cvar_RegisterVariable(&r_shadows_castfrombmodels);
 	Cvar_RegisterVariable(&r_shadows_castfromworld);
 	Cvar_RegisterVariable(&r_shadows_throwdistance);
 	Cvar_RegisterVariable(&r_shadows_throwdirection);
+	Cvar_RegisterVariable(&r_shadows_quantize_movement);
+	Cvar_RegisterVariable(&r_shadows_quantize_throwdirection);
+
+	
 	Cvar_RegisterVariable(&r_shadows_focus);
+	Cvar_RegisterVariable(&r_shadows_focus2);
 	Cvar_RegisterVariable(&r_shadows_shadowmapscale);
 	Cvar_RegisterVariable(&r_shadows_shadowmapbias);
 	Cvar_RegisterVariable(&r_q1bsp_skymasking);
@@ -7054,6 +7062,15 @@ void R_UpdateVariables(void)
 
 	r_refdef.scene.ambient = r_ambient.value * (1.0f / 64.0f);
 
+	r_refdef.scene.sunlight = r_sunlight.integer ? true : false;
+	r_refdef.scene.sunintensity = r_sunlight_intensity.value;
+	VectorCopy(r_sunlight_color.vector, r_refdef.scene.suncolor);
+	VectorCopy(r_sunlight_dir.vector, r_refdef.scene.sundir);
+	VectorNormalize(r_refdef.scene.sundir);
+	r_refdef.scene.suncorona = r_sunlight_corona.integer ? true : false;
+	r_refdef.scene.suncoronaintensity = r_sunlight_coronaintensity.value;
+	r_refdef.scene.suncoronasize = r_sunlight_coronasize.value;
+
 	r_refdef.farclip = r_farclip_base.value;
 	if (r_refdef.scene.worldmodel)
 		r_refdef.farclip += r_refdef.scene.worldmodel->radius * r_farclip_world.value * 2;
@@ -7474,36 +7491,29 @@ void R_RenderScene(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture)
 	if (r_refdef.scene.extraupdate)
 		S_ExtraUpdate ();
 
-	if ((r_shadows.integer == 1 || (r_shadows.integer > 0 && !shadowmapping)) && !r_shadows_drawafterrtlighting.integer && r_refdef.lightmapintensity > 0)
+	if (!r_shadows_drawaftertransparent.integer)
 	{
-		R_ResetViewRendering3D(fbo, depthtexture, colortexture);
-		R_DrawModelShadows(fbo, depthtexture, colortexture);
-		R_ResetViewRendering3D(fbo, depthtexture, colortexture);
-		// don't let sound skip if going slow
-		if (r_refdef.scene.extraupdate)
-			S_ExtraUpdate ();
-	}
-
-	if (!r_shadow_usingdeferredprepass)
-	{
-		R_Shadow_DrawLights();
-		if (r_timereport_active)
-			R_TimeReport("rtlights");
+		if ((r_shadows.integer == 1 || (r_shadows.integer > 0 && !shadowmapping)) && r_refdef.lightmapintensity > 0)
+		{
+			R_ResetViewRendering3D(fbo, depthtexture, colortexture);
+			R_DrawModelShadows(fbo, depthtexture, colortexture);
+			R_ResetViewRendering3D(fbo, depthtexture, colortexture);
+			// don't let sound skip if going slow
+			if (r_refdef.scene.extraupdate)
+				S_ExtraUpdate ();
+		}
+		// draw lights
+		if (!r_shadow_usingdeferredprepass)
+		{
+			R_Shadow_DrawLights();
+			if (r_timereport_active)
+				R_TimeReport("rtlights");
+		}
 	}
 
 	// don't let sound skip if going slow
 	if (r_refdef.scene.extraupdate)
 		S_ExtraUpdate ();
-
-	if ((r_shadows.integer == 1 || (r_shadows.integer > 0 && !shadowmapping)) && r_shadows_drawafterrtlighting.integer && r_refdef.lightmapintensity > 0)
-	{
-		R_ResetViewRendering3D(fbo, depthtexture, colortexture);
-		R_DrawModelShadows(fbo, depthtexture, colortexture);
-		R_ResetViewRendering3D(fbo, depthtexture, colortexture);
-		// don't let sound skip if going slow
-		if (r_refdef.scene.extraupdate)
-			S_ExtraUpdate ();
-	}
 
 	if (cl.csqc_vidvars.drawworld)
 	{
@@ -7565,6 +7575,26 @@ void R_RenderScene(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture)
 		R_MeshQueue_RenderTransparent();
 		if (r_timereport_active)
 			R_TimeReport("drawtrans");
+	}
+
+	if (r_shadows_drawaftertransparent.integer)
+	{
+		if ((r_shadows.integer == 1 || (r_shadows.integer > 0 && !shadowmapping)) && r_refdef.lightmapintensity > 0)
+		{
+			R_ResetViewRendering3D(fbo, depthtexture, colortexture);
+			R_DrawModelShadows(fbo, depthtexture, colortexture);
+			R_ResetViewRendering3D(fbo, depthtexture, colortexture);
+			// don't let sound skip if going slow
+			if (r_refdef.scene.extraupdate)
+				S_ExtraUpdate ();
+		}
+		// draw lights
+		if (!r_shadow_usingdeferredprepass)
+		{
+			R_Shadow_DrawLights();
+			if (r_timereport_active)
+				R_TimeReport("rtlights");
+		}
 	}
 
 	if (r_refdef.view.showdebug && r_refdef.scene.worldmodel && r_refdef.scene.worldmodel->DrawDebug && (r_showtris.value > 0 || r_shownormals.value != 0 || r_showcollisionbrushes.value > 0 || r_showoverdraw.value > 0))
@@ -8244,8 +8274,9 @@ texture_t *R_GetCurrentTexture(texture_t *t)
 		t->currentmaterialflags |= MATERIALFLAG_VERTEXTEXTUREBLEND;
 	if (t->currentmaterialflags & MATERIALFLAG_BLENDED)
 	{
-		if (t->currentmaterialflags & (MATERIALFLAG_REFRACTION | MATERIALFLAG_WATERSHADER | MATERIALFLAG_CAMERA))
-			t->currentmaterialflags &= ~MATERIALFLAG_BLENDED;
+		// VorteX: disallowed depth for water
+		//if (t->currentmaterialflags & (MATERIALFLAG_REFRACTION | MATERIALFLAG_WATERSHADER | MATERIALFLAG_CAMERA))
+		//	t->currentmaterialflags &= ~MATERIALFLAG_BLENDED;
 	}
 	else
 		t->currentmaterialflags &= ~(MATERIALFLAG_REFRACTION | MATERIALFLAG_WATERSHADER | MATERIALFLAG_CAMERA);
@@ -8486,6 +8517,8 @@ void RSurf_ActiveWorldEntity(void)
 	VectorSet(rsurface.colormap_shirtcolor, 0, 0, 0);
 	VectorSet(rsurface.colormod, r_refdef.view.colorscale, r_refdef.view.colorscale, r_refdef.view.colorscale);
 	rsurface.colormod[3] = 1;
+	if (r_refdef.scene.sunlight)
+		Matrix4x4_Transform3x3(&rsurface.inversematrix, r_refdef.scene.sundir, rsurface.sundir);
 	VectorSet(rsurface.glowmod, r_refdef.view.colorscale * r_hdr_glowintensity.value, r_refdef.view.colorscale * r_hdr_glowintensity.value, r_refdef.view.colorscale * r_hdr_glowintensity.value);
 	memset(rsurface.frameblend, 0, sizeof(rsurface.frameblend));
 	rsurface.frameblend[0].lerp = 1;
@@ -8615,6 +8648,8 @@ void RSurf_ActiveModelEntity(const entity_render_t *ent, qboolean wantnormals, q
 	VectorCopy(ent->colormap_shirtcolor, rsurface.colormap_shirtcolor);
 	VectorScale(ent->colormod, r_refdef.view.colorscale, rsurface.colormod);
 	rsurface.colormod[3] = ent->alpha;
+	if (r_refdef.scene.sunlight)
+		Matrix4x4_Transform3x3(&rsurface.inversematrix, r_refdef.scene.sundir, rsurface.sundir);
 	VectorScale(ent->glowmod, r_refdef.view.colorscale * r_hdr_glowintensity.value, rsurface.glowmod);
 	memcpy(rsurface.frameblend, ent->frameblend, sizeof(ent->frameblend));
 	rsurface.ent_alttextures = ent->framegroupblend[0].frame != 0;
@@ -8864,6 +8899,8 @@ void RSurf_ActiveCustomEntity(const matrix4x4_t *matrix, const matrix4x4_t *inve
 	VectorSet(rsurface.colormap_pantscolor, 0, 0, 0);
 	VectorSet(rsurface.colormap_shirtcolor, 0, 0, 0);
 	Vector4Set(rsurface.colormod, r * r_refdef.view.colorscale, g * r_refdef.view.colorscale, b * r_refdef.view.colorscale, a);
+	if (r_refdef.scene.sunlight)
+		Matrix4x4_Transform3x3(&rsurface.inversematrix, r_refdef.scene.sundir, rsurface.sundir);
 	VectorSet(rsurface.glowmod, r_refdef.view.colorscale * r_hdr_glowintensity.value, r_refdef.view.colorscale * r_hdr_glowintensity.value, r_refdef.view.colorscale * r_hdr_glowintensity.value);
 	memset(rsurface.frameblend, 0, sizeof(rsurface.frameblend));
 	rsurface.frameblend[0].lerp = 1;

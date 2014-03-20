@@ -1743,8 +1743,9 @@ void Mod_LoadQ3Shaders(void)
 			shader.reflectfactor = 1;
 			Vector4Set(shader.reflectcolor4f, 1, 1, 1, 1);
 			shader.r_water_wateralpha = 1;
-			shader.r_water_waterscroll[0] = 0;
-			shader.r_water_waterscroll[1] = 0;
+			shader.scrollblend[0] = 0;
+			shader.scrollblend[1] = 0;
+			shader.scrollblend[2] = 0;
 			shader.offsetmapping = (mod_q3shader_default_offsetmapping.value) ? OFFSETMAPPING_DEFAULT : OFFSETMAPPING_OFF;
 			shader.offsetscale = mod_q3shader_default_offsetmapping_scale.value;
 			shader.offsetbias = mod_q3shader_default_offsetmapping_bias.value;
@@ -2299,8 +2300,21 @@ void Mod_LoadQ3Shaders(void)
 				}
 				else if (!strcasecmp(parameter[0], "dpwaterscroll") && numparameters >= 3)
 				{
-					shader.r_water_waterscroll[0] = 1/atof(parameter[1]);
-					shader.r_water_waterscroll[1] = 1/atof(parameter[2]);
+					shader.scrollblend[0] = 1/atof(parameter[1]);
+					shader.scrollblend[1] = 1/atof(parameter[2]);
+					if (numparameters >= 4)
+						shader.scrollblend[2] = atof(parameter[3]);
+					else
+						shader.scrollblend[2] = 0.1f;
+				}
+				else if (!strcasecmp(parameter[0], "dpscrollblend") && numparameters >= 3)
+				{
+					shader.scrollblend[0] = atof(parameter[1]);
+					shader.scrollblend[1] = atof(parameter[2]);
+					if (numparameters >= 4)
+						shader.scrollblend[2] = atof(parameter[3]);
+					else
+						shader.scrollblend[2] = 0.1f;
 				}
 				else if (!strcasecmp(parameter[0], "dpglossintensitymod") && numparameters >= 2)
 				{
@@ -2612,7 +2626,7 @@ nothing                GL_ZERO GL_ONE
 		texture->reflectfactor = shader->reflectfactor;
 		Vector4Copy(shader->reflectcolor4f, texture->reflectcolor4f);
 		texture->r_water_wateralpha = shader->r_water_wateralpha;
-		Vector2Copy(shader->r_water_waterscroll, texture->r_water_waterscroll);
+		VectorCopy(shader->scrollblend, texture->scrollblend);
 		texture->offsetmapping = shader->offsetmapping;
 		texture->offsetscale = shader->offsetscale;
 		texture->offsetbias = shader->offsetbias;

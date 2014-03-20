@@ -4676,13 +4676,14 @@ void R_Shadow_DrawLights(void)
 #define MAX_MODELSHADOWS 1024
 static int r_shadow_nummodelshadows;
 static entity_render_t *r_shadow_modelshadows[MAX_MODELSHADOWS];
+static vec3_t r_shadow_shadowmaporigin;
+static vec3_t r_shadow_shadowmapthrowdirection;
 
 void R_Shadow_PrepareModelShadows(void)
 {
 	int i;
-	float scale, size, radius, dot1, dot2;
-	prvm_vec3_t prvmshadowdir, prvmshadowfocus;
-	vec3_t shadowdir, shadowforward, shadowright, shadoworigin, shadowfocus, shadowmins, shadowmaxs;
+	float scale, size, radius, dot1, dot2, unitsize;
+	vec3_t shadowangles, shadowforward, shadowright, shadoworigin, shadowfocus, shadowmins, shadowmaxs;
 	entity_render_t *ent;
 
 	r_shadow_nummodelshadows = 0;
@@ -4718,33 +4719,52 @@ void R_Shadow_PrepareModelShadows(void)
 	scale = r_shadow_shadowmapping_precision.value * r_shadows_shadowmapscale.value;
 	radius = 0.5f * size / scale;
 
-	VectorCopy(r_shadows_throwdirection.vector, prvmshadowdir);
-	VectorCopy(prvmshadowdir, shadowdir);
-	VectorNormalize(shadowdir);
-	dot1 = DotProduct(r_refdef.view.forward, shadowdir);
-	dot2 = DotProduct(r_refdef.view.up, shadowdir);
+	VectorCopy(r_refdef.view.origin, r_shadow_shadowmaporigin);
+	if (r_shadows_quantize_movement.integer)
+	{
+		// VorteX: quantize camera origin by shadowmap unit size to eliminate a part of ugly edge flickering
+		unitsize = ((r_shadows_throwdistance.value / r_shadow_shadowmapmaxsize) / scale) * r_shadows_quantize_movement.integer;
+		r_shadow_shadowmaporigin[0] = ((r_shadow_shadowmaporigin[0] < 0) ? ceil(r_shadow_shadowmaporigin[0] / unitsize) : floor(r_shadow_shadowmaporigin[0] / unitsize)) * unitsize;
+		r_shadow_shadowmaporigin[1] = ((r_shadow_shadowmaporigin[1] < 0) ? ceil(r_shadow_shadowmaporigin[1] / unitsize) : floor(r_shadow_shadowmaporigin[1] / unitsize)) * unitsize;
+		r_shadow_shadowmaporigin[2] = ((r_shadow_shadowmaporigin[2] < 0) ? ceil(r_shadow_shadowmaporigin[2] / unitsize) : floor(r_shadow_shadowmaporigin[2] / unitsize)) * unitsize;
+	}
+
+	VectorCopy(r_shadows_throwdirection.vector, r_shadow_shadowmapthrowdirection);
+	VectorNormalize(r_shadow_shadowmapthrowdirection);
+	if (r_shadows_quantize_throwdirection.value)
+	{
+		// VorteX: quantize throw direction
+		AnglesFromVectors(shadowangles, r_shadow_shadowmapthrowdirection, NULL, false);
+		shadowangles[0] = floor(shadowangles[0] / r_shadows_quantize_throwdirection.value) * r_shadows_quantize_throwdirection.value;
+		shadowangles[1] = floor(shadowangles[1] / r_shadows_quantize_throwdirection.value) * r_shadows_quantize_throwdirection.value;
+		AngleVectors(shadowangles, r_shadow_shadowmapthrowdirection, NULL, NULL);
+	}
+	VectorNormalize(r_shadow_shadowmapthrowdirection);
+
+	dot1 = DotProduct(r_refdef.view.forward, r_shadow_shadowmapthrowdirection);
+	dot2 = DotProduct(r_refdef.view.up, r_shadow_shadowmapthrowdirection);
 	if (fabs(dot1) <= fabs(dot2))
-		VectorMA(r_refdef.view.forward, -dot1, shadowdir, shadowforward);
+		VectorMA(r_refdef.view.forward, -dot1, r_shadow_shadowmapthrowdirection, shadowforward);
 	else
-		VectorMA(r_refdef.view.up, -dot2, shadowdir, shadowforward);
+		VectorMA(r_refdef.view.up, -dot2, r_shadow_shadowmapthrowdirection, shadowforward);
 	VectorNormalize(shadowforward);
-	CrossProduct(shadowdir, shadowforward, shadowright);
-	VectorCopy(r_shadows_focus.vector, prvmshadowfocus);
-	VectorCopy(prvmshadowfocus, shadowfocus);
+	CrossProduct(r_shadow_shadowmapthrowdirection, shadowforward, shadowright);
+	VectorCopy(r_shadows_focus.vector, shadowfocus);
 	VectorM(shadowfocus[0], r_refdef.view.right, shadoworigin);
 	VectorMA(shadoworigin, shadowfocus[1], r_refdef.view.up, shadoworigin);
 	VectorMA(shadoworigin, -shadowfocus[2], r_refdef.view.forward, shadoworigin);
-	VectorAdd(shadoworigin, r_refdef.view.origin, shadoworigin);
-	if (shadowfocus[0] || shadowfocus[1] || shadowfocus[2])
+	VectorAdd(shadoworigin, r_shadow_shadowmaporigin, shadoworigin);
+	VectorAdd(shadoworigin, r_shadows_focus2.vector, shadoworigin);
+	if (shadowfocus[0] || shadowfocus[1] || shadowfocus[2] || r_shadows_focus2.vector[0] || r_shadows_focus2.vector[1] || r_shadows_focus2.vector[2] || r_shadows_quantize_movement.integer)
 		dot1 = 1;
 	VectorMA(shadoworigin, (1.0f - fabs(dot1)) * radius, shadowforward, shadoworigin);
 
-	shadowmins[0] = shadoworigin[0] - r_shadows_throwdistance.value * fabs(shadowdir[0]) - radius * (fabs(shadowforward[0]) + fabs(shadowright[0]));
-	shadowmins[1] = shadoworigin[1] - r_shadows_throwdistance.value * fabs(shadowdir[1]) - radius * (fabs(shadowforward[1]) + fabs(shadowright[1]));
-	shadowmins[2] = shadoworigin[2] - r_shadows_throwdistance.value * fabs(shadowdir[2]) - radius * (fabs(shadowforward[2]) + fabs(shadowright[2]));
-	shadowmaxs[0] = shadoworigin[0] + r_shadows_throwdistance.value * fabs(shadowdir[0]) + radius * (fabs(shadowforward[0]) + fabs(shadowright[0]));
-	shadowmaxs[1] = shadoworigin[1] + r_shadows_throwdistance.value * fabs(shadowdir[1]) + radius * (fabs(shadowforward[1]) + fabs(shadowright[1]));
-	shadowmaxs[2] = shadoworigin[2] + r_shadows_throwdistance.value * fabs(shadowdir[2]) + radius * (fabs(shadowforward[2]) + fabs(shadowright[2]));
+	shadowmins[0] = shadoworigin[0] - r_shadows_throwdistance.value * fabs(r_shadow_shadowmapthrowdirection[0]) - radius * (fabs(shadowforward[0]) + fabs(shadowright[0]));
+	shadowmins[1] = shadoworigin[1] - r_shadows_throwdistance.value * fabs(r_shadow_shadowmapthrowdirection[1]) - radius * (fabs(shadowforward[1]) + fabs(shadowright[1]));
+	shadowmins[2] = shadoworigin[2] - r_shadows_throwdistance.value * fabs(r_shadow_shadowmapthrowdirection[2]) - radius * (fabs(shadowforward[2]) + fabs(shadowright[2]));
+	shadowmaxs[0] = shadoworigin[0] + r_shadows_throwdistance.value * fabs(r_shadow_shadowmapthrowdirection[0]) + radius * (fabs(shadowforward[0]) + fabs(shadowright[0]));
+	shadowmaxs[1] = shadoworigin[1] + r_shadows_throwdistance.value * fabs(r_shadow_shadowmapthrowdirection[1]) + radius * (fabs(shadowforward[1]) + fabs(shadowright[1]));
+	shadowmaxs[2] = shadoworigin[2] + r_shadows_throwdistance.value * fabs(r_shadow_shadowmapthrowdirection[2]) + radius * (fabs(shadowforward[2]) + fabs(shadowright[2]));
 
 	for (i = 0;i < r_refdef.scene.numentities;i++)
 	{
@@ -4770,8 +4790,8 @@ void R_DrawModelShadowMaps(int fbo, rtexture_t *depthtexture, rtexture_t *colort
 	vec3_t relativelightorigin;
 	vec3_t relativelightdirection, relativeforward, relativeright;
 	vec3_t relativeshadowmins, relativeshadowmaxs;
-	vec3_t shadowdir, shadowforward, shadowright, shadoworigin, shadowfocus;
-	prvm_vec3_t prvmshadowdir, prvmshadowfocus;
+	vec3_t shadowforward, shadowright, shadoworigin, shadowfocus;
+
 	float m[12];
 	matrix4x4_t shadowmatrix, cameramatrix, mvpmatrix, invmvpmatrix, scalematrix, texmatrix;
 	r_viewport_t viewport;
@@ -4823,30 +4843,27 @@ void R_DrawModelShadowMaps(int fbo, rtexture_t *depthtexture, rtexture_t *colort
 	r_shadow_shadowmap_parameters[2] = 1.0;
 	r_shadow_shadowmap_parameters[3] = bound(0.0f, 1.0f - r_shadows_darken.value, 1.0f);
 
-	VectorCopy(r_shadows_throwdirection.vector, prvmshadowdir);
-	VectorCopy(prvmshadowdir, shadowdir);
-	VectorNormalize(shadowdir);
-	VectorCopy(r_shadows_focus.vector, prvmshadowfocus);
-	VectorCopy(prvmshadowfocus, shadowfocus);
+	VectorCopy(r_shadows_focus.vector, shadowfocus);
 	VectorM(shadowfocus[0], r_refdef.view.right, shadoworigin);
 	VectorMA(shadoworigin, shadowfocus[1], r_refdef.view.up, shadoworigin);
 	VectorMA(shadoworigin, -shadowfocus[2], r_refdef.view.forward, shadoworigin);
-	VectorAdd(shadoworigin, r_refdef.view.origin, shadoworigin);
-	dot1 = DotProduct(r_refdef.view.forward, shadowdir);
-	dot2 = DotProduct(r_refdef.view.up, shadowdir);
+	VectorAdd(shadoworigin, r_shadow_shadowmaporigin, shadoworigin);
+	VectorAdd(shadoworigin, r_shadows_focus2.vector, shadoworigin);
+	dot1 = DotProduct(r_refdef.view.forward, r_shadow_shadowmapthrowdirection);
+	dot2 = DotProduct(r_refdef.view.up, r_shadow_shadowmapthrowdirection);
 	if (fabs(dot1) <= fabs(dot2)) 
-		VectorMA(r_refdef.view.forward, -dot1, shadowdir, shadowforward);
+		VectorMA(r_refdef.view.forward, -dot1, r_shadow_shadowmapthrowdirection, shadowforward);
 	else
-		VectorMA(r_refdef.view.up, -dot2, shadowdir, shadowforward);
+		VectorMA(r_refdef.view.up, -dot2, r_shadow_shadowmapthrowdirection, shadowforward);
 	VectorNormalize(shadowforward);
 	VectorM(scale, shadowforward, &m[0]);
-	if (shadowfocus[0] || shadowfocus[1] || shadowfocus[2])
+	if (shadowfocus[0] || shadowfocus[1] || shadowfocus[2] || r_shadows_focus2.vector[0] || r_shadows_focus2.vector[1] || r_shadows_focus2.vector[2] || r_shadows_quantize_movement.integer)
 		dot1 = 1;
 	m[3] = fabs(dot1) * 0.5f - DotProduct(shadoworigin, &m[0]);
-	CrossProduct(shadowdir, shadowforward, shadowright);
+	CrossProduct(r_shadow_shadowmapthrowdirection, shadowforward, shadowright);
 	VectorM(scale, shadowright, &m[4]);
 	m[7] = 0.5f - DotProduct(shadoworigin, &m[4]);
-	VectorM(1.0f / (farclip - nearclip), shadowdir, &m[8]);
+	VectorM(1.0f / (farclip - nearclip), r_shadow_shadowmapthrowdirection, &m[8]);
 	m[11] = 0.5f - DotProduct(shadoworigin, &m[8]);
 	Matrix4x4_FromArray12FloatD3D(&shadowmatrix, m);
 	Matrix4x4_Invert_Full(&cameramatrix, &shadowmatrix);
@@ -4883,7 +4900,7 @@ void R_DrawModelShadowMaps(int fbo, rtexture_t *depthtexture, rtexture_t *colort
 		{
 			relativethrowdistance = r_shadows_throwdistance.value * Matrix4x4_ScaleFromMatrix(&ent->inversematrix);
 			Matrix4x4_Transform(&ent->inversematrix, shadoworigin, relativelightorigin);
-			Matrix4x4_Transform3x3(&ent->inversematrix, shadowdir, relativelightdirection);
+			Matrix4x4_Transform3x3(&ent->inversematrix, r_shadow_shadowmapthrowdirection, relativelightdirection);
 			Matrix4x4_Transform3x3(&ent->inversematrix, shadowforward, relativeforward);
 			Matrix4x4_Transform3x3(&ent->inversematrix, shadowright, relativeright);
 			relativeshadowmins[0] = relativelightorigin[0] - r_shadows_throwdistance.value * fabs(relativelightdirection[0]) - radius * (fabs(relativeforward[0]) + fabs(relativeright[0]));
@@ -4902,7 +4919,7 @@ void R_DrawModelShadowMaps(int fbo, rtexture_t *depthtexture, rtexture_t *colort
 		ent = r_shadow_modelshadows[i];
 		relativethrowdistance = r_shadows_throwdistance.value * Matrix4x4_ScaleFromMatrix(&ent->inversematrix);
 		Matrix4x4_Transform(&ent->inversematrix, shadoworigin, relativelightorigin);
-		Matrix4x4_Transform3x3(&ent->inversematrix, shadowdir, relativelightdirection);
+		Matrix4x4_Transform3x3(&ent->inversematrix, r_shadow_shadowmapthrowdirection, relativelightdirection);
 		Matrix4x4_Transform3x3(&ent->inversematrix, shadowforward, relativeforward);
 		Matrix4x4_Transform3x3(&ent->inversematrix, shadowright, relativeright);
 		relativeshadowmins[0] = relativelightorigin[0] - r_shadows_throwdistance.value * fabs(relativelightdirection[0]) - radius * (fabs(relativeforward[0]) + fabs(relativeright[0]));
@@ -4984,7 +5001,6 @@ void R_DrawModelShadows(int fbo, rtexture_t *depthtexture, rtexture_t *colortext
 	vec3_t relativelightdirection;
 	vec3_t relativeshadowmins, relativeshadowmaxs;
 	vec3_t tmp, shadowdir;
-	prvm_vec3_t prvmshadowdir;
 
 	if (!r_shadow_nummodelshadows || (r_shadow_shadowmode != R_SHADOW_SHADOWMODE_STENCIL && r_shadows.integer != 1))
 		return;
@@ -5007,8 +5023,7 @@ void R_DrawModelShadows(int fbo, rtexture_t *depthtexture, rtexture_t *colortext
 	// get shadow dir
 	if (r_shadows.integer == 2)
 	{
-		VectorCopy(r_shadows_throwdirection.vector, prvmshadowdir);
-		VectorCopy(prvmshadowdir, shadowdir);
+		VectorCopy(r_shadows_throwdirection.vector, shadowdir);
 		VectorNormalize(shadowdir);
 	}
 

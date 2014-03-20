@@ -189,7 +189,7 @@ typedef enum shaderpermutation_e
 	SHADERPERMUTATION_DEFERREDLIGHTMAP = 1<<21, ///< (lightmap) read Texture_ScreenDiffuse/Specular textures and add them on top of lightmapping
 	SHADERPERMUTATION_ALPHAKILL = 1<<22, ///< (deferredgeometry) discard pixel if diffuse texture alpha below 0.5, (generic) apply global alpha
 	SHADERPERMUTATION_REFLECTCUBE = 1<<23, ///< fake reflections using global cubemap (not HDRI light probe)
-	SHADERPERMUTATION_NORMALMAPSCROLLBLEND = 1<<24, ///< (water) counter-direction normalmaps scrolling
+	SHADERPERMUTATION_SCROLLBLEND = 1<<24, ///< counter-direction normalmap/diffuse texture scroll effect
 	SHADERPERMUTATION_BOUNCEGRID = 1<<25, ///< (lightmap) use Texture_BounceGrid as an additional source of ambient light
 	SHADERPERMUTATION_BOUNCEGRIDDIRECTIONAL = 1<<26, ///< (lightmap) use 16-component pixels in bouncegrid texture for directional lighting rather than standard 4-component
 	SHADERPERMUTATION_TRIPPY = 1<<27, ///< use trippy vertex shader effect
@@ -306,7 +306,7 @@ typedef enum DPSOFTRAST_UNIFORM_e
 	DPSOFTRAST_UNIFORM_ShadowMapMatrixM3,
 	DPSOFTRAST_UNIFORM_ShadowMapMatrixM4,
 	DPSOFTRAST_UNIFORM_BloomColorSubtract,
-	DPSOFTRAST_UNIFORM_NormalmapScrollBlend,
+	DPSOFTRAST_UNIFORM_ScrollBlend,
 	DPSOFTRAST_UNIFORM_OffsetMapping_LodDistance,
 	DPSOFTRAST_UNIFORM_OffsetMapping_Bias,
 	DPSOFTRAST_UNIFORM_TOTAL
