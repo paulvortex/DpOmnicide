@@ -117,7 +117,7 @@ cvar_t r_shadows = {CVAR_SAVE, "r_shadows", "0", "casts fake stencil shadows fro
 cvar_t r_shadows_darken = {CVAR_SAVE, "r_shadows_darken", "0.5", "how much shadowed areas will be darkened"};
 cvar_t r_shadows_throwdistance = {CVAR_SAVE, "r_shadows_throwdistance", "500", "how far to cast shadows from models"};
 cvar_t r_shadows_throwdirection = {CVAR_SAVE, "r_shadows_throwdirection", "0 0 -1", "override throwing direction for r_shadows 2"};
-cvar_t r_shadows_drawaftertransparent = {CVAR_SAVE, "r_shadows_drawaftertransparent", "0", "draw fake shadows AFTER transparent entities which make them able to receive shadow."};
+cvar_t r_shadows_drawaftertransparent = {CVAR_SAVE, "r_shadows_drawaftertransparent", "0", "enable fake shadows to be cast on transparent entities. A value of 2 and more is reserved."};
 cvar_t r_shadows_quantize_movement = {CVAR_SAVE, "r_shadows_quantize_movement", "0", "Prevent shadow edge flickering during player movement by quantizing camera origin update. A value controls of how much shadowmap units to quantize for."};
 cvar_t r_shadows_quantize_throwdirection = {CVAR_SAVE, "r_shadows_quantize_throwdirection", "0", "Prevent shadow edge flickering on throwdirection vector by quantizing it's angles. A value controls of how much degrees to quantize for."};
 cvar_t r_shadows_castfrombmodels = {CVAR_SAVE, "r_shadows_castfrombmodels", "0", "do cast shadows from bmodels"};
@@ -7384,6 +7384,7 @@ extern cvar_t cl_locs_show;
 static void R_DrawLocs(void);
 static void R_DrawEntityBBoxes(void);
 static void R_DrawModelDecals(void);
+void R_CheckModelShadowMaps();
 extern cvar_t cl_decals_newsystem;
 extern qboolean r_shadow_usingdeferredprepass;
 void R_RenderScene(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture)
@@ -7438,16 +7439,25 @@ void R_RenderScene(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture)
 	}
 
 	R_Shadow_PrepareLights(fbo, depthtexture, colortexture);
-	if (r_shadows.integer > 0 && r_refdef.lightmapintensity > 0)
-		R_Shadow_PrepareModelShadows();
 	if (r_timereport_active)
 		R_TimeReport("preparelights");
+
+	if (r_shadows.integer > 0 && r_refdef.lightmapintensity > 0)
+	{
+		R_Shadow_PrepareModelShadows();
+		if (r_timereport_active)
+			R_TimeReport("preparemodelshadows");
+	}
 
 	if (R_Shadow_ShadowMappingEnabled())
 		shadowmapping = true;
 
 	if (r_shadow_usingdeferredprepass)
+	{
 		R_Shadow_DrawPrepass();
+		if (r_timereport_active)
+			R_TimeReport("defferedprepass");
+	}
 
 	if (r_depthfirst.integer >= 1 && cl.csqc_vidvars.drawworld && r_refdef.scene.worldmodel && r_refdef.scene.worldmodel->DrawDepth)
 	{
@@ -7455,6 +7465,7 @@ void R_RenderScene(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture)
 		if (r_timereport_active)
 			R_TimeReport("worlddepth");
 	}
+
 	if (r_depthfirst.integer >= 2)
 	{
 		R_DrawModelsDepth();
@@ -7467,6 +7478,8 @@ void R_RenderScene(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture)
 		R_ResetViewRendering3D(fbo, depthtexture, colortexture);
 		R_DrawModelShadowMaps(fbo, depthtexture, colortexture);
 		R_ResetViewRendering3D(fbo, depthtexture, colortexture);
+		if (r_timereport_active)
+			R_TimeReport("modelshadows");
 		// don't let sound skip if going slow
 		if (r_refdef.scene.extraupdate)
 			S_ExtraUpdate ();
@@ -7491,29 +7504,33 @@ void R_RenderScene(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture)
 	if (r_refdef.scene.extraupdate)
 		S_ExtraUpdate ();
 
-	if (!r_shadows_drawaftertransparent.integer)
+	if ((r_shadows.integer == 1 || (r_shadows.integer > 0 && !shadowmapping)) && r_refdef.lightmapintensity > 0)
 	{
-		if ((r_shadows.integer == 1 || (r_shadows.integer > 0 && !shadowmapping)) && r_refdef.lightmapintensity > 0)
-		{
-			R_ResetViewRendering3D(fbo, depthtexture, colortexture);
-			R_DrawModelShadows(fbo, depthtexture, colortexture);
-			R_ResetViewRendering3D(fbo, depthtexture, colortexture);
-			// don't let sound skip if going slow
-			if (r_refdef.scene.extraupdate)
-				S_ExtraUpdate ();
-		}
-		// draw lights
-		if (!r_shadow_usingdeferredprepass)
-		{
-			R_Shadow_DrawLights();
-			if (r_timereport_active)
-				R_TimeReport("rtlights");
-		}
+		R_ResetViewRendering3D(fbo, depthtexture, colortexture);
+		R_DrawModelShadows(fbo, depthtexture, colortexture);
+		R_ResetViewRendering3D(fbo, depthtexture, colortexture);
+		if (r_timereport_active)
+			R_TimeReport("modelshadows");
+		// don't let sound skip if going slow
+		if (r_refdef.scene.extraupdate)
+			S_ExtraUpdate ();
+	}
+
+	// draw lights
+	if (!r_shadow_usingdeferredprepass)
+	{
+		R_Shadow_DrawLights();
+		if (r_timereport_active)
+			R_TimeReport("rtlights");
 	}
 
 	// don't let sound skip if going slow
 	if (r_refdef.scene.extraupdate)
 		S_ExtraUpdate ();
+
+	// vortex: re-enable shadowmaps cos R_Shadow_DrawLights cause shadow system reset
+	if (r_shadows_drawaftertransparent.integer == 1)
+		R_CheckModelShadowMaps();
 
 	if (cl.csqc_vidvars.drawworld)
 	{
@@ -7575,26 +7592,6 @@ void R_RenderScene(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture)
 		R_MeshQueue_RenderTransparent();
 		if (r_timereport_active)
 			R_TimeReport("drawtrans");
-	}
-
-	if (r_shadows_drawaftertransparent.integer)
-	{
-		if ((r_shadows.integer == 1 || (r_shadows.integer > 0 && !shadowmapping)) && r_refdef.lightmapintensity > 0)
-		{
-			R_ResetViewRendering3D(fbo, depthtexture, colortexture);
-			R_DrawModelShadows(fbo, depthtexture, colortexture);
-			R_ResetViewRendering3D(fbo, depthtexture, colortexture);
-			// don't let sound skip if going slow
-			if (r_refdef.scene.extraupdate)
-				S_ExtraUpdate ();
-		}
-		// draw lights
-		if (!r_shadow_usingdeferredprepass)
-		{
-			R_Shadow_DrawLights();
-			if (r_timereport_active)
-				R_TimeReport("rtlights");
-		}
 	}
 
 	if (r_refdef.view.showdebug && r_refdef.scene.worldmodel && r_refdef.scene.worldmodel->DrawDebug && (r_showtris.value > 0 || r_shownormals.value != 0 || r_showcollisionbrushes.value > 0 || r_showoverdraw.value > 0))

@@ -4782,6 +4782,18 @@ void R_Shadow_PrepareModelShadows(void)
 	}
 }
 
+
+void R_CheckModelShadowMaps()
+{
+	if (!r_shadow_nummodelshadows)
+		return;
+	if (r_shadow_shadowmode != R_SHADOW_SHADOWMODE_SHADOWMAP2D)
+		return;
+	r_shadow_usingshadowmaportho = true;
+	if (r_shadow_shadowmode == R_SHADOW_SHADOWMODE_SHADOWMAP2D)
+		r_shadow_usingshadowmap2d = true;
+}
+
 void R_DrawModelShadowMaps(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture)
 {
 	int i;
@@ -4980,16 +4992,7 @@ void R_DrawModelShadowMaps(int fbo, rtexture_t *depthtexture, rtexture_t *colort
 #endif
 		break;
 	}
-
-	r_shadow_usingshadowmaportho = true;
-	switch (r_shadow_shadowmode)
-	{
-	case R_SHADOW_SHADOWMODE_SHADOWMAP2D:
-		r_shadow_usingshadowmap2d = true;
-		break;
-	default:
-		break;
-	}
+	R_CheckModelShadowMaps();
 }
 
 void R_DrawModelShadows(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture)
