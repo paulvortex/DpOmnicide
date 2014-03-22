@@ -117,7 +117,7 @@ cvar_t r_shadows = {CVAR_SAVE, "r_shadows", "0", "casts fake stencil shadows fro
 cvar_t r_shadows_darken = {CVAR_SAVE, "r_shadows_darken", "0.5", "how much shadowed areas will be darkened"};
 cvar_t r_shadows_throwdistance = {CVAR_SAVE, "r_shadows_throwdistance", "500", "how far to cast shadows from models"};
 cvar_t r_shadows_throwdirection = {CVAR_SAVE, "r_shadows_throwdirection", "0 0 -1", "override throwing direction for r_shadows 2"};
-cvar_t r_shadows_drawaftertransparent = {CVAR_SAVE, "r_shadows_drawaftertransparent", "0", "enable fake shadows to be cast on transparent entities. A value of 2 and more is reserved."};
+cvar_t r_shadows_castontransparent = {CVAR_SAVE, "r_shadows_castontransparent", "0", "enable fake shadows to be cast on transparent entities. A value of 2 and more is reserved."};
 cvar_t r_shadows_quantize_movement = {CVAR_SAVE, "r_shadows_quantize_movement", "0", "Prevent shadow edge flickering during player movement by quantizing camera origin update. A value controls of how much shadowmap units to quantize for."};
 cvar_t r_shadows_quantize_throwdirection = {CVAR_SAVE, "r_shadows_quantize_throwdirection", "0", "Prevent shadow edge flickering on throwdirection vector by quantizing it's angles. A value controls of how much degrees to quantize for."};
 cvar_t r_shadows_castfrombmodels = {CVAR_SAVE, "r_shadows_castfrombmodels", "0", "do cast shadows from bmodels"};
@@ -4357,9 +4357,9 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_fullbright);
 	Cvar_RegisterVariable(&r_shadows);
 	Cvar_RegisterVariable(&r_shadows_darken);
-	Cvar_RegisterVariable(&r_shadows_drawaftertransparent);
 	Cvar_RegisterVariable(&r_shadows_castfrombmodels);
 	Cvar_RegisterVariable(&r_shadows_castfromworld);
+	Cvar_RegisterVariable(&r_shadows_castontransparent);
 	Cvar_RegisterVariable(&r_shadows_throwdistance);
 	Cvar_RegisterVariable(&r_shadows_throwdirection);
 	Cvar_RegisterVariable(&r_shadows_quantize_movement);
@@ -7529,7 +7529,7 @@ void R_RenderScene(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture)
 		S_ExtraUpdate ();
 
 	// vortex: re-enable shadowmaps cos R_Shadow_DrawLights cause shadow system reset
-	if (r_shadows_drawaftertransparent.integer == 1)
+	if (r_shadows_castontransparent.integer == 1)
 		R_CheckModelShadowMaps();
 
 	if (cl.csqc_vidvars.drawworld)

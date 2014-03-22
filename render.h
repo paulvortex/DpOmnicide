@@ -592,10 +592,11 @@ void R_SetupView(qboolean allowwaterclippingplane, int fbo, rtexture_t *depthtex
 extern const float r_screenvertex3f[12];
 extern cvar_t r_shadows;
 extern cvar_t r_shadows_darken;
-extern cvar_t r_shadows_drawaftertransparent;
 extern cvar_t r_shadows_quantize_movement;
 extern cvar_t r_shadows_quantize_throwdirection;
 extern cvar_t r_shadows_castfrombmodels;
+extern cvar_t r_shadows_castfromworld;
+extern cvar_t r_shadows_castontransparent;
 extern cvar_t r_shadows_throwdistance;
 extern cvar_t r_shadows_throwdirection;
 extern cvar_t r_shadows_focus;
