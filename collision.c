@@ -1068,6 +1068,10 @@ void Collision_TraceBrushTriangleMeshFloat(trace_t *trace, const colbrushf_t *th
 void Collision_TraceLineTriangleMeshFloat(trace_t *trace, const vec3_t linestart, const vec3_t lineend, int numtriangles, const int *element3i, const float *vertex3f, int stride, float *bbox6f, int supercontents, int q3surfaceflags, const texture_t *texture, const vec3_t segmentmins, const vec3_t segmentmaxs)
 {
 	int i;
+
+	// vortex: bugfix: check supercontents
+	if (!(trace->hitsupercontentsmask & supercontents))
+		return;
 	// FIXME: snap vertices?
 	if(stride > 0)
 	{

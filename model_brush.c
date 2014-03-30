@@ -6395,12 +6395,16 @@ static void Mod_CollisionBIH_TraceLineShared(dp_model_t *model, const frameblend
 						continue;
 					e = model->brush.data_collisionelement3i + 3*leaf->itemindex;
 					texture = model->data_textures + leaf->textureindex;
-					Collision_TraceLineTriangleFloat(trace, start, end, model->brush.data_collisionvertex3f + e[0] * 3, model->brush.data_collisionvertex3f + e[1] * 3, model->brush.data_collisionvertex3f + e[2] * 3, texture->supercontents, texture->surfaceflags, texture);
+					// vortex: bugfix: check supercontents
+					if (trace->hitsupercontentsmask & texture->supercontents)
+						Collision_TraceLineTriangleFloat(trace, start, end, model->brush.data_collisionvertex3f + e[0] * 3, model->brush.data_collisionvertex3f + e[1] * 3, model->brush.data_collisionvertex3f + e[2] * 3, texture->supercontents, texture->surfaceflags, texture);
 					break;
 				case BIH_RENDERTRIANGLE:
 					e = model->surfmesh.data_element3i + 3*leaf->itemindex;
 					texture = model->data_textures + leaf->textureindex;
-					Collision_TraceLineTriangleFloat(trace, start, end, model->surfmesh.data_vertex3f + e[0] * 3, model->surfmesh.data_vertex3f + e[1] * 3, model->surfmesh.data_vertex3f + e[2] * 3, texture->supercontents, texture->surfaceflags, texture);
+					// vortex: bugfix: check supercontents
+					if (trace->hitsupercontentsmask & texture->supercontents)
+						Collision_TraceLineTriangleFloat(trace, start, end, model->surfmesh.data_vertex3f + e[0] * 3, model->surfmesh.data_vertex3f + e[1] * 3, model->surfmesh.data_vertex3f + e[2] * 3, texture->supercontents, texture->surfaceflags, texture);
 					break;
 				}
 			}
