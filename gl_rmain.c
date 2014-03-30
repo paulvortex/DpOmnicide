@@ -82,7 +82,7 @@ cvar_t r_transparent_sortsurfacesbynearest = {0, "r_transparent_sortsurfacesbyne
 cvar_t r_transparent_useplanardistance = {0, "r_transparent_useplanardistance", "0", "sort transparent meshes by distance from view plane rather than spherical distance to the chosen point"};
 cvar_t r_showoverdraw = {0, "r_showoverdraw", "0", "shows overlapping geometry"};
 cvar_t r_showbboxes = {0, "r_showbboxes", "0", "shows bounding boxes of server entities, value controls opacity scaling (1 = 10%,  10 = 100%)"};
-cvar_t r_showsurfaces = {0, "r_showsurfaces", "0", "1 shows surfaces as different colors, or a value of 2 shows triangle draw order (for analyzing whether meshes are optimized for vertex cache)"};
+cvar_t r_showsurfaces = {0, "r_showsurfaces", "0", "1 shows surfaces as different colors, or a value of 2 shows triangle draw order (for analyzing whether meshes are optimized for vertex cache), a value of 3 shows texture averaged color with vertex shading applied, a value of 4 shows vertex draw order, a value of 5 shows shadernames as different colors, a value of 6 shows entities as different colors"};
 cvar_t r_showtris = {0, "r_showtris", "0", "shows triangle outlines, value controls brightness (can be above 1)"};
 cvar_t r_shownormals = {0, "r_shownormals", "0", "shows per-vertex surface normals and tangent vectors for bumpmapped lighting"};
 cvar_t r_showlighting = {0, "r_showlighting", "0", "shows areas lit by lights, useful for finding out why some areas of a map render slowly (bright orange = lots of passes = slow), a value of 2 disables depth testing which can be interesting but not very useful"};
@@ -11167,7 +11167,7 @@ static void R_DrawTextureSurfaceList_ShowSurfaces(int texturenumsurfaces, const 
 		batchvertex = R_Mesh_PrepareVertices_Generic_Lock(rsurface.batchnumvertices);
 		for (j = 0, vi = 0;j < rsurface.batchnumvertices;j++, vi++)
 		{
-			unsigned char c = (vi << 3) * (1.0f / 256.0f);
+			float c = ((vi << 3) * (1.0f / 256.0f)) / 10.0f;
 			VectorCopy(rsurface.batchvertex3f + 3*vi, batchvertex[vi].vertex3f);
 			Vector4Set(batchvertex[vi].color4f, c, c, c, 1);
 		}
@@ -11181,7 +11181,7 @@ static void R_DrawTextureSurfaceList_ShowSurfaces(int texturenumsurfaces, const 
 		batchvertex = R_Mesh_PrepareVertices_Generic_Lock(3*rsurface.batchnumtriangles);
 		for (j = 0, e = rsurface.batchelement3i + 3 * rsurface.batchfirsttriangle;j < rsurface.batchnumtriangles;j++, e += 3)
 		{
-			unsigned char c = ((j + rsurface.batchfirsttriangle) << 3) * (1.0f / 256.0f);
+			float c = (((j + rsurface.batchfirsttriangle) << 3) * (1.0f / 256.0f)) / 10.0f;
 			VectorCopy(rsurface.batchvertex3f + 3*e[0], batchvertex[j*3+0].vertex3f);
 			VectorCopy(rsurface.batchvertex3f + 3*e[1], batchvertex[j*3+1].vertex3f);
 			VectorCopy(rsurface.batchvertex3f + 3*e[2], batchvertex[j*3+2].vertex3f);
@@ -11194,6 +11194,8 @@ static void R_DrawTextureSurfaceList_ShowSurfaces(int texturenumsurfaces, const 
 	}
 	else
 	{
+		GL_DepthMask(writedepth);
+
 		int texturesurfaceindex;
 		int k;
 		const msurface_t *surface;
@@ -11204,8 +11206,23 @@ static void R_DrawTextureSurfaceList_ShowSurfaces(int texturenumsurfaces, const 
 		for (texturesurfaceindex = 0;texturesurfaceindex < texturenumsurfaces;texturesurfaceindex++)
 		{
 			surface = texturesurfacelist[texturesurfaceindex];
-			k = (int)(((size_t)surface) / sizeof(msurface_t));
-			Vector4Set(surfacecolor4f, (k & 0xF) * (1.0f / 16.0f), (k & 0xF0) * (1.0f / 256.0f), (k & 0xF00) * (1.0f / 4096.0f), 1);
+			if (r_showsurfaces.integer == 5)
+			{
+				const unsigned char *shadername = (unsigned char *)surface->texture->name;
+				k = (int)CRC_Block(shadername, strlen(surface->texture->name));
+				Vector4Set(surfacecolor4f, (k & 0xF) * (1.0f / 16.0f), (k & 0xF0) * (1.0f / 256.0f), (k & 0xF00) * (1.0f / 4096.0f), 1);
+			}
+			else if (r_showsurfaces.integer == 6)
+			{
+				const unsigned char *crcblock = (unsigned char *)rsurface.entity;
+				k = (int)CRC_Block(crcblock, sizeof(*rsurface.entity));
+				Vector4Set(surfacecolor4f, (k & 0xF00) * (1.0f / 4096.0f), (k & 0xF0) * (1.0f / 256.0f), (k & 0xF) * (1.0f / 16.0f), 1);
+			}
+			else
+			{
+				k = (int)(((size_t)surface) / sizeof(msurface_t));
+				Vector4Set(surfacecolor4f, (k & 0xF) * (1.0f / 16.0f), (k & 0xF0) * (1.0f / 256.0f), (k & 0xF00) * (1.0f / 4096.0f), 1);
+			}
 			for (j = 0;j < surface->num_vertices;j++)
 			{
 				VectorCopy(rsurface.batchvertex3f + 3*vi, batchvertex[vi].vertex3f);
