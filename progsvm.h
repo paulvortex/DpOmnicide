@@ -271,6 +271,12 @@ extern prvm_eval_t prvm_badvalue;
 #define PRVM_MAX_OPENFILES 256
 #define PRVM_MAX_OPENSEARCHES 128
 #endif
+#ifdef DP_DEVELOPER_BUILD
+#define PRVM_MAX_LOOP 1000000000
+#else
+#define PRVM_MAX_LOOP 10000000
+#endif
+
 
 struct prvm_prog_s;
 typedef void (*prvm_builtin_t) (struct prvm_prog_s *prog);

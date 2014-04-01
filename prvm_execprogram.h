@@ -302,7 +302,7 @@
 					st = cached_statements + st->jumpabsolute - 1;	// offset the st++
 					startst = st;
 					// no bounds check needed, it is done when loading progs
-					if (++jumpcount == 10000000 && prvm_runawaycheck)
+					if (++jumpcount == PRVM_MAX_LOOP && prvm_runawaycheck)
 					{
 						prog->xstatement = st - cached_statements;
 						PRVM_Profile(prog, 1<<30, 1000000, 0);
@@ -321,7 +321,7 @@
 					st = cached_statements + st->jumpabsolute - 1;	// offset the st++
 					startst = st;
 					// no bounds check needed, it is done when loading progs
-					if (++jumpcount == 10000000 && prvm_runawaycheck)
+					if (++jumpcount == PRVM_MAX_LOOP && prvm_runawaycheck)
 					{
 						prog->xstatement = st - cached_statements;
 						PRVM_Profile(prog, 1<<30, 0.01, 0);
@@ -335,7 +335,7 @@
 				st = cached_statements + st->jumpabsolute - 1;	// offset the st++
 				startst = st;
 				// no bounds check needed, it is done when loading progs
-				if (++jumpcount == 10000000 && prvm_runawaycheck)
+				if (++jumpcount == PRVM_MAX_LOOP && prvm_runawaycheck)
 				{
 					prog->xstatement = st - cached_statements;
 					PRVM_Profile(prog, 1<<30, 0.01, 0);
