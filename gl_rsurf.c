@@ -1585,7 +1585,7 @@ static void R_ReplaceWorldTexture (void)
 	{
 		if(/*t->width && !strcasecmp(t->name, r)*/ matchpattern( t->name, r, true ) )
 		{
-			if ((skinframe = R_SkinFrame_LoadExternal(newt, TEXF_MIPMAP | TEXF_ALPHA | TEXF_PICMIP, true)))
+			if ((skinframe = R_SkinFrame_LoadExternal(newt, TEXF_MIPMAP | TEXF_ALPHA | TEXF_PICMIP, false, true)))
 			{
 //				t->skinframes[0] = skinframe;
 				t->currentskinframe = skinframe;

@@ -56,6 +56,10 @@ typedef enum textype_e
 	// 4x4 block compressed 15bit color plus 8bit alpha (8 bits per pixel)
 	TEXTYPE_DXT5,
 
+	// DXT5 swizzled formats
+	TEXTYPE_DXT5_YCG2, // YCoCg Scaled
+	TEXTYPE_DXT5_YCG4, // YCoCg Scaled Gamma 2.0
+
 	// default compressed type for GLES2
 	TEXTYPE_ETC1,
 
@@ -201,6 +205,9 @@ int R_TextureHeight(rtexture_t *rt);
 
 // returns flags of texture, as was specified when it was uploaded
 int R_TextureFlags(rtexture_t *rt);
+
+// returns texture type, as was specified when it was uploaded
+textype_t R_TextureType(rtexture_t *rt);
 
 // only frees the texture if TEXF_PERSISTENT is not set
 // also resets the variable

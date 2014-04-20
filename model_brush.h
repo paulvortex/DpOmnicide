@@ -122,6 +122,8 @@ mplane_t;
 #define MATERIALFLAG_ALPHAGEN_VERTEX 268435456
 // disable fog rendering  surface
 #define MATERIALFLAG_NOFOG 536870912
+// indicates that none of triangles of the surface should be added to the BIH collision system, even render ones
+#define MATERIALFLAG_NOBIH 1073741824
 // combined mask of all attributes that require depth sorted rendering
 #define MATERIALFLAGMASK_DEPTHSORTED (MATERIALFLAG_BLENDED | MATERIALFLAG_NODEPTHTEST)
 // combined mask of all attributes that cause some sort of transparency

@@ -1288,7 +1288,7 @@ void Mod_IDP0_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		// check for skins that don't exist in the model, but do exist as external images
 		// (this was added because yummyluv kept pestering me about support for it)
 		// TODO: support shaders here?
-		while ((tempskinframe = R_SkinFrame_LoadExternal(va(vabuf, sizeof(vabuf), "%s_%i", loadmodel->name, loadmodel->numskins), (r_mipskins.integer ? TEXF_MIPMAP : 0) | TEXF_ALPHA | TEXF_PICMIP | TEXF_COMPRESS, false)))
+		while ((tempskinframe = R_SkinFrame_LoadExternal(va(vabuf, sizeof(vabuf), "%s_%i", loadmodel->name, loadmodel->numskins), (r_mipskins.integer ? TEXF_MIPMAP : 0) | TEXF_ALPHA | TEXF_PICMIP | TEXF_COMPRESS, false, false)))
 		{
 			// expand the arrays to make room
 			tempskinscenes = loadmodel->skinscenes;

@@ -29,6 +29,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //cvar_t r_subdivide_size = {CVAR_SAVE, "r_subdivide_size", "128", "how large water polygons should be (smaller values produce more polygons which give better warping effects)"};
 cvar_t mod_bsp_portalize = {0, "mod_bsp_portalize", "1", "enables portal generation from BSP tree (may take several seconds per map), used by r_drawportals, r_useportalculling, r_shadow_realtime_world_compileportalculling, sv_cullentities_portal"};
 cvar_t mod_bsp_createshadowmesh = {0, "mod_bsp_createshadowmesh", "1", "make a single combined shadow mesh of worldspawn (may take several seconds per map) to allow optimized shadow volume creation and shadowed surfaces culling for shadowmapped lights. A value of 2 will create shadowmesh but no neighbor triangles info (which is used by shadow volumes)."};
+cvar_t mod_bsp_qwchecksum = {0, "mod_bsp_qwchecksum", "1", "calculate checksums for maps (may take some miliseconds per map)."};
 cvar_t r_novis = {0, "r_novis", "0", "draws whole level, see also sv_cullentities_pvs 0"};
 cvar_t r_nosurftextures = {0, "r_nosurftextures", "0", "pretends there was no texture lump found in the q1bsp/hlbsp loading (useful for debugging this rare case)"};
 cvar_t r_subdivisions_tolerance = {0, "r_subdivisions_tolerance", "4", "maximum error tolerance on curve subdivision for rendering purposes (in other words, the curves will be given as many polygons as necessary to represent curves at this quality)"};
@@ -49,9 +50,11 @@ cvar_t mod_q3bsp_curves_stride = {0, "mod_q3bsp_curves_stride", "16", "particle 
 cvar_t mod_q3bsp_optimizedtraceline = {0, "mod_q3bsp_optimizedtraceline", "1", "whether to use optimized traceline code for line traces (as opposed to tracebox code)"};
 cvar_t mod_q3bsp_debugtracebrush = {0, "mod_q3bsp_debugtracebrush", "0", "selects different tracebrush bsp recursion algorithms (for debugging purposes only)"};
 cvar_t mod_q3bsp_lightmapmergepower = {CVAR_SAVE, "mod_q3bsp_lightmapmergepower", "4", "merges the quake3 128x128 lightmap textures into larger lightmap group textures to speed up rendering, 1 = 256x256, 2 = 512x512, 3 = 1024x1024, 4 = 2048x2048, 5 = 4096x4096, ..."};
+cvar_t mod_q3bsp_lightmapskinframes = {CVAR_SAVE, "mod_q3bsp_lightmapskinframes", "0", "load lightmaps as skin frames: 1) precompressed textures can used for lightmap (DDS/KTX ones). 2) lightmap precache possible (previous level have some model with surface set to lightmap texture). 3) JPG's for lightmaps are posible. 4) lightmap merging are notsupported, so it is recommended that map will have only one large lightmap"};
 cvar_t mod_q3bsp_nolightmaps = {CVAR_SAVE, "mod_q3bsp_nolightmaps", "0", "do not load lightmaps in Q3BSP maps (to save video RAM, but be warned: it looks ugly)"};
 cvar_t mod_q3bsp_tracelineofsight_brushes = {0, "mod_q3bsp_tracelineofsight_brushes", "0", "enables culling of entities behind detail brushes, curves, etc"};
 cvar_t mod_q3bsp_sRGBlightmaps = {0, "mod_q3bsp_sRGBlightmaps", "0", "treat lightmaps from Q3 maps as sRGB when vid_sRGB is active"};
+cvar_t mod_q3bsp_fixq3map2bugs = {0, "mod_q3bsp_fixq3map2bugs", "1", "applies various fixes for q3map2 bugs"};
 cvar_t mod_q3shader_default_offsetmapping = {CVAR_SAVE, "mod_q3shader_default_offsetmapping", "1", "use offsetmapping by default on all surfaces that are using q3 shader files"};
 cvar_t mod_q3shader_default_offsetmapping_scale = {CVAR_SAVE, "mod_q3shader_default_offsetmapping_scale", "1", "default scale used for offsetmapping"};
 cvar_t mod_q3shader_default_offsetmapping_bias = {CVAR_SAVE, "mod_q3shader_default_offsetmapping_bias", "0", "default bias used for offsetmapping"};
@@ -75,6 +78,7 @@ void Mod_BrushInit(void)
 //	Cvar_RegisterVariable(&r_subdivide_size);
 	Cvar_RegisterVariable(&mod_bsp_portalize);
 	Cvar_RegisterVariable(&mod_bsp_createshadowmesh);
+	Cvar_RegisterVariable(&mod_bsp_qwchecksum);
 	Cvar_RegisterVariable(&r_novis);
 	Cvar_RegisterVariable(&r_nosurftextures);
 	Cvar_RegisterVariable(&r_subdivisions_tolerance);
@@ -95,8 +99,10 @@ void Mod_BrushInit(void)
 	Cvar_RegisterVariable(&mod_q3bsp_optimizedtraceline);
 	Cvar_RegisterVariable(&mod_q3bsp_debugtracebrush);
 	Cvar_RegisterVariable(&mod_q3bsp_lightmapmergepower);
+	Cvar_RegisterVariable(&mod_q3bsp_lightmapskinframes);
 	Cvar_RegisterVariable(&mod_q3bsp_nolightmaps);
 	Cvar_RegisterVariable(&mod_q3bsp_sRGBlightmaps);
+	Cvar_RegisterVariable(&mod_q3bsp_fixq3map2bugs);
 	Cvar_RegisterVariable(&mod_q3bsp_tracelineofsight_brushes);
 	Cvar_RegisterVariable(&mod_q3shader_default_offsetmapping);
 	Cvar_RegisterVariable(&mod_q3shader_default_offsetmapping_scale);
@@ -1823,9 +1829,9 @@ static void Mod_Q1BSP_LoadTextures(sizebuf_t *sb)
 			}
 			else
 			{
-				skinframe = R_SkinFrame_LoadExternal(gamemode == GAME_TENEBRAE ? tx->name : va(vabuf, sizeof(vabuf), "textures/%s/%s", mapname, tx->name), TEXF_ALPHA | TEXF_MIPMAP | TEXF_ISWORLD | TEXF_PICMIP | TEXF_COMPRESS, false);
+				skinframe = R_SkinFrame_LoadExternal(gamemode == GAME_TENEBRAE ? tx->name : va(vabuf, sizeof(vabuf), "textures/%s/%s", mapname, tx->name), TEXF_ALPHA | TEXF_MIPMAP | TEXF_ISWORLD | TEXF_PICMIP | TEXF_COMPRESS, false, false);
 				if (!skinframe)
-					skinframe = R_SkinFrame_LoadExternal(gamemode == GAME_TENEBRAE ? tx->name : va(vabuf, sizeof(vabuf), "textures/%s", tx->name), TEXF_ALPHA | TEXF_MIPMAP | TEXF_ISWORLD | TEXF_PICMIP | TEXF_COMPRESS, false);
+					skinframe = R_SkinFrame_LoadExternal(gamemode == GAME_TENEBRAE ? tx->name : va(vabuf, sizeof(vabuf), "textures/%s", tx->name), TEXF_ALPHA | TEXF_MIPMAP | TEXF_ISWORLD | TEXF_PICMIP | TEXF_COMPRESS, false, false);
 				if (skinframe)
 					tx->offsetmapping = OFFSETMAPPING_DEFAULT; // allow offsetmapping on external textures without a q3 shader
 				if (!skinframe)
@@ -3887,16 +3893,19 @@ void Mod_Q1BSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 
 	mod->brush.qw_md4sum = 0;
 	mod->brush.qw_md4sum2 = 0;
-	for (i = 0;i < HEADER_LUMPS;i++)
+	if (mod_bsp_qwchecksum.integer)
 	{
-		int temp;
-		if (i == LUMP_ENTITIES)
-			continue;
-		temp = Com_BlockChecksum(lumpsb[i].data, lumpsb[i].cursize);
-		mod->brush.qw_md4sum ^= LittleLong(temp);
-		if (i == LUMP_VISIBILITY || i == LUMP_LEAFS || i == LUMP_NODES)
-			continue;
-		mod->brush.qw_md4sum2 ^= LittleLong(temp);
+		for (i = 0;i < HEADER_LUMPS;i++)
+		{
+			int temp;
+			if (i == LUMP_ENTITIES)
+				continue;
+			temp = Com_BlockChecksum(lumpsb[i].data, lumpsb[i].cursize);
+			mod->brush.qw_md4sum ^= LittleLong(temp);
+			if (i == LUMP_VISIBILITY || i == LUMP_LEAFS || i == LUMP_NODES)
+				continue;
+			mod->brush.qw_md4sum2 ^= LittleLong(temp);
+		}
 	}
 
 	Mod_Q1BSP_LoadEntities(&lumpsb[LUMP_ENTITIES]);
@@ -4541,14 +4550,17 @@ static void Mod_Q2BSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 
 	mod->brush.qw_md4sum = 0;
 	mod->brush.qw_md4sum2 = 0;
-	for (i = 0;i < Q2HEADER_LUMPS;i++)
+	if (mod_bsp_qwchecksum.integer)
 	{
-		if (i == Q2LUMP_ENTITIES)
-			continue;
-		mod->brush.qw_md4sum ^= Com_BlockChecksum(mod_base + header->lumps[i].fileofs, header->lumps[i].filelen);
-		if (i == Q2LUMP_VISIBILITY || i == Q2LUMP_LEAFS || i == Q2LUMP_NODES)
-			continue;
-		mod->brush.qw_md4sum2 ^= Com_BlockChecksum(mod_base + header->lumps[i].fileofs, header->lumps[i].filelen);
+		for (i = 0;i < Q2HEADER_LUMPS;i++)
+		{
+			if (i == Q2LUMP_ENTITIES)
+				continue;
+			mod->brush.qw_md4sum ^= Com_BlockChecksum(mod_base + header->lumps[i].fileofs, header->lumps[i].filelen);
+			if (i == Q2LUMP_VISIBILITY || i == Q2LUMP_LEAFS || i == Q2LUMP_NODES)
+				continue;
+			mod->brush.qw_md4sum2 ^= Com_BlockChecksum(mod_base + header->lumps[i].fileofs, header->lumps[i].filelen);
+		}
 	}
 
 	Mod_Q2BSP_LoadEntities(&header->lumps[Q2LUMP_ENTITIES]);
@@ -4972,6 +4984,7 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 	char mapname[MAX_QPATH];
 	qboolean external;
 	unsigned char *inpixels[10000]; // max count q3map2 can output (it uses 4 digits)
+	skinframe_t *skinframes[10000], *sf;
 	char vabuf[1024];
 
 	// defaults for q3bsp
@@ -4982,15 +4995,14 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 	rgbmap[2] = 0;
 	external = false;
 	loadmodel->brushq3.lightmapsize = 128;
-
+	loadmodel->brushq3.lightmapmerged = false;
+	
 	if (cls.state == ca_dedicated)
 		return;
-
-	if(mod_q3bsp_nolightmaps.integer)
-	{
+	if (mod_q3bsp_nolightmaps.integer)
 		return;
-	}
-	else if(l->filelen)
+
+	if(l->filelen)
 	{
 		// prefer internal LMs for compatibility (a BSP contains no info on whether external LMs exist)
 		if (developer_loading.integer)
@@ -5006,38 +5018,78 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 	{
 		// no internal lightmaps
 		// try external lightmaps
-		if (developer_loading.integer)
-			Con_Printf("Using external lightmaps\n");
-		FS_StripExtension(loadmodel->name, mapname, sizeof(mapname));
-		inpixels[0] = loadimagepixelsbgra(va(vabuf, sizeof(vabuf), "%s/lm_%04d", mapname, 0), false, false, false, NULL);
-		if(!inpixels[0])
-			return;
+		if (mod_q3bsp_lightmapskinframes.integer)
+		{		
+			if (developer_loading.integer)
+				Con_Printf("Using external lightmap skinframes\n");
+			FS_StripExtension(loadmodel->name, mapname, sizeof(mapname));
 
-		// using EXTERNAL lightmaps instead
-		if(image_width != (int) CeilPowerOf2(image_width) || image_width != image_height)
-		{
-			Mem_Free(inpixels[0]);
-			Host_Error("Mod_Q3BSP_LoadLightmaps: invalid external lightmap size in %s",loadmodel->name);
-		}
+			// load first lightmap
+			sf = R_SkinFrame_LoadExternal(va(vabuf, sizeof(vabuf), "%s/lm_%04d", mapname, 0), TEXF_CLAMP | TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), true, false);
+			inpixels[0] = NULL;
+			if(!sf)
+				return;
+			skinframes[0] = sf;
+			image_width = R_TextureWidth(skinframes[0]->base);
+			image_height = R_TextureHeight(skinframes[0]->base);
+			size = image_width;
+			external = true;
 
-		size = image_width;
-		bytesperpixel = 4;
-		rgbmap[0] = 0;
-		rgbmap[1] = 1;
-		rgbmap[2] = 2;
-		external = true;
+			// lightmaps should be a power-of-two dimension squares
+			if(image_width != (int) CeilPowerOf2(image_width) || image_width != image_height)
+				Con_Printf("Mod_Q3BSP_LoadLightmaps: invalid external lightmap size in %s", loadmodel->name);
 
-		for(count = 1; ; ++count)
-		{
-			inpixels[count] = loadimagepixelsbgra(va(vabuf, sizeof(vabuf), "%s/lm_%04d", mapname, count), false, false, false, NULL);
-			if(!inpixels[count])
-				break; // we got all of them
-			if(image_width != size || image_height != size)
+			// load rest lightmaps
+			for(count = 1; ; ++count)
 			{
-				Mem_Free(inpixels[count]);
+				sf = R_SkinFrame_LoadExternal(va(vabuf, sizeof(vabuf), "%s/lm_%04d", mapname, count), TEXF_CLAMP | TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), true, false);
 				inpixels[count] = NULL;
-				Con_Printf("Mod_Q3BSP_LoadLightmaps: mismatched lightmap size in %s - external lightmap %s/lm_%04d does not match earlier ones\n", loadmodel->name, mapname, count);
-				break;
+				if(!sf)
+					break; // we got all of them
+				skinframes[count] = sf;
+				image_width = R_TextureWidth(skinframes[count]->base);
+				image_height = R_TextureHeight(skinframes[count]->base);
+				if(image_width != size || image_height != size)
+					Con_Printf("Mod_Q3BSP_LoadLightmaps: mismatched lightmap size in %s - external lightmap %s/lm_%04d does not match earlier ones\n", loadmodel->name, mapname, count);
+			}
+		}
+		else
+		{
+			if (developer_loading.integer)
+				Con_Printf("Using external lightmaps\n");
+			FS_StripExtension(loadmodel->name, mapname, sizeof(mapname));
+
+			// load first lightmap
+			inpixels[0] = loadimagepixelsbgra(va(vabuf, sizeof(vabuf), "%s/lm_%04d", mapname, 0), false, false, false, NULL);
+			if(!inpixels[0])
+				return;
+
+			// lightmaps should be a power-of-two dimension squares
+			if(image_width != (int) CeilPowerOf2(image_width) || image_width != image_height)
+			{
+				Mem_Free(inpixels[0]);
+				Host_Error("Mod_Q3BSP_LoadLightmaps: invalid external lightmap size in %s",loadmodel->name);
+			}
+			
+			size = image_width;
+			bytesperpixel = 4;
+			rgbmap[0] = 0;
+			rgbmap[1] = 1;
+			rgbmap[2] = 2;
+			external = true;
+
+			for(count = 1; ; ++count)
+			{
+				inpixels[count] = loadimagepixelsbgra(va(vabuf, sizeof(vabuf), "%s/lm_%04d", mapname, count), false, false, false, NULL);
+				if(!inpixels[count])
+					break; // we got all of them
+				if(image_width != size || image_height != size)
+				{
+					Mem_Free(inpixels[count]);
+					inpixels[count] = NULL;
+					Con_Printf("Mod_Q3BSP_LoadLightmaps: mismatched lightmap size in %s - external lightmap %s/lm_%04d does not match earlier ones\n", loadmodel->name, mapname, count);
+					break;
+				}
 			}
 		}
 	}
@@ -5087,134 +5139,204 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 		//
 		// further research has shown q3map2 sometimes creates a deluxemap and two
 		// blank lightmaps, which must be handled properly as well
-		if (endlightmap == 1 && count > 1)
+		if (mod_q3bsp_fixq3map2bugs.integer)
 		{
-			c = inpixels[1];
-			for (i = 0;i < size*size;i++)
+			if (endlightmap == 1 && count > 1 && inpixels[1])
 			{
-				if (c[bytesperpixel*i + rgbmap[0]])
-					break;
-				if (c[bytesperpixel*i + rgbmap[1]])
-					break;
-				if (c[bytesperpixel*i + rgbmap[2]])
-					break;
-			}
-			if (i == size*size)
-			{
-				// all pixels in the unused lightmap were black...
-				loadmodel->brushq3.deluxemapping = false;
+				c = inpixels[1];
+				for (i = 0;i < size*size;i++)
+				{
+					if (c[bytesperpixel*i + rgbmap[0]])
+						break;
+					if (c[bytesperpixel*i + rgbmap[1]])
+						break;
+					if (c[bytesperpixel*i + rgbmap[2]])
+						break;
+				}
+				if (i == size*size)
+				{
+					// all pixels in the unused lightmap were black...
+					loadmodel->brushq3.deluxemapping = false;
+				}
 			}
 		}
 	}
 
 	Con_DPrintf("%s is %sdeluxemapped\n", loadmodel->name, loadmodel->brushq3.deluxemapping ? "" : "not ");
 
-	// figure out what the most reasonable merge power is within limits
-
-	// find the appropriate NxN dimensions to merge to, to avoid wasted space
+	// load lightmap textures
 	realcount = count >> (int)loadmodel->brushq3.deluxemapping;
-
-	// figure out how big the merged texture has to be
-	mergegoal = 128<<bound(0, mod_q3bsp_lightmapmergepower.integer, 6);
-	mergegoal = bound(size, mergegoal, (int)vid.maxtexturesize_2d);
-	while (mergegoal > size && mergegoal * mergegoal / 4 >= size * size * realcount)
-		mergegoal /= 2;
-	mergedwidth = mergegoal;
-	mergedheight = mergegoal;
-	// choose non-square size (2x1 aspect) if only half the space is used;
-	// this really only happens when the entire set fits in one texture, if
-	// there are multiple textures, we don't worry about shrinking the last
-	// one to fit, because the driver prefers the same texture size on
-	// consecutive draw calls...
-	if (mergedwidth * mergedheight / 2 >= size*size*realcount)
-		mergedheight /= 2;
-
-	loadmodel->brushq3.num_lightmapmergedwidthpower = 0;
-	loadmodel->brushq3.num_lightmapmergedheightpower = 0;
-	while (mergedwidth > size<<loadmodel->brushq3.num_lightmapmergedwidthpower)
-		loadmodel->brushq3.num_lightmapmergedwidthpower++;
-	while (mergedheight > size<<loadmodel->brushq3.num_lightmapmergedheightpower)
-		loadmodel->brushq3.num_lightmapmergedheightpower++;
-	loadmodel->brushq3.num_lightmapmergedwidthheightdeluxepower = loadmodel->brushq3.num_lightmapmergedwidthpower + loadmodel->brushq3.num_lightmapmergedheightpower + (loadmodel->brushq3.deluxemapping ? 1 : 0);
-
-	powerx = loadmodel->brushq3.num_lightmapmergedwidthpower;
-	powery = loadmodel->brushq3.num_lightmapmergedheightpower;
-	powerxy = powerx+powery;
-	powerdxy = loadmodel->brushq3.deluxemapping + powerxy;
-
-	mergedcolumns = 1 << powerx;
-	mergedrows = 1 << powery;
-	mergedrowsxcolumns = 1 << powerxy;
-
-	loadmodel->brushq3.num_mergedlightmaps = (realcount + (1 << powerxy) - 1) >> powerxy;
-	loadmodel->brushq3.data_lightmaps = (rtexture_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brushq3.num_mergedlightmaps * sizeof(rtexture_t *));
-	if (loadmodel->brushq3.deluxemapping)
-		loadmodel->brushq3.data_deluxemaps = (rtexture_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brushq3.num_mergedlightmaps * sizeof(rtexture_t *));
-
-	// allocate a texture pool if we need it
-	if (loadmodel->texturepool == NULL && cls.state != ca_dedicated)
-		loadmodel->texturepool = R_AllocTexturePool();
-
-	mergedpixels = (unsigned char *) Mem_Alloc(tempmempool, mergedwidth * mergedheight * 4);
-	mergeddeluxepixels = loadmodel->brushq3.deluxemapping ? (unsigned char *) Mem_Alloc(tempmempool, mergedwidth * mergedheight * 4) : NULL;
-	for (i = 0;i < count;i++)
+	if ( external && mod_q3bsp_lightmapskinframes.integer ) 
 	{
-		// figure out which merged lightmap texture this fits into
-		realindex = i >> (int)loadmodel->brushq3.deluxemapping;
-		lightmapindex = i >> powerdxy;
-
-		// choose the destination address
-		mergebuf = (loadmodel->brushq3.deluxemapping && (i & 1)) ? mergeddeluxepixels : mergedpixels;
-		mergebuf += 4 * (realindex & (mergedcolumns-1))*size + 4 * ((realindex >> powerx) & (mergedrows-1))*mergedwidth*size;
-		if ((i & 1) == 0 || !loadmodel->brushq3.deluxemapping)
-			Con_DPrintf("copying original lightmap %i (%ix%i) to %i (at %i,%i)\n", i, size, size, lightmapindex, (realindex & (mergedcolumns-1))*size, ((realindex >> powerx) & (mergedrows-1))*size);
-
-		// convert pixels from RGB or BGRA while copying them into the destination rectangle
-		for (j = 0;j < size;j++)
-		for (k = 0;k < size;k++)
+		// allocate texture data
+		loadmodel->brushq3.num_lightmapmergedwidthpower = 0;
+		loadmodel->brushq3.num_lightmapmergedheightpower = 0;
+		loadmodel->brushq3.num_mergedlightmaps = realcount;
+		loadmodel->brushq3.data_lightmaps = (rtexture_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brushq3.num_mergedlightmaps * sizeof(rtexture_t *));
+		loadmodel->brushq3.skinframe_lightmaps = (skinframe_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brushq3.num_mergedlightmaps * sizeof(skinframe_t *));
+		if( loadmodel->brushq3.deluxemapping )
 		{
-			mergebuf[(j*mergedwidth+k)*4+0] = inpixels[i][(j*size+k)*bytesperpixel+rgbmap[0]];
-			mergebuf[(j*mergedwidth+k)*4+1] = inpixels[i][(j*size+k)*bytesperpixel+rgbmap[1]];
-			mergebuf[(j*mergedwidth+k)*4+2] = inpixels[i][(j*size+k)*bytesperpixel+rgbmap[2]];
-			mergebuf[(j*mergedwidth+k)*4+3] = 255;
+			loadmodel->brushq3.data_deluxemaps = (rtexture_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brushq3.num_mergedlightmaps * sizeof(rtexture_t *));
+			loadmodel->brushq3.skinframe_deluxemaps = (skinframe_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brushq3.num_mergedlightmaps * sizeof(skinframe_t *));
 		}
 
-		// upload texture if this was the last tile being written to the texture
-		if (((realindex + 1) & (mergedrowsxcolumns - 1)) == 0 || (realindex + 1) == realcount)
+		// link up with textures
+		for( lightmapindex = i = 0; i < count; i++, lightmapindex++ )
 		{
-			if (loadmodel->brushq3.deluxemapping && (i & 1))
-				loadmodel->brushq3.data_deluxemaps[lightmapindex] = R_LoadTexture2D(loadmodel->texturepool, va(vabuf, sizeof(vabuf), "deluxemap%04i", lightmapindex), mergedwidth, mergedheight, mergeddeluxepixels, TEXTYPE_BGRA, TEXF_FORCELINEAR | (gl_texturecompression_q3bspdeluxemaps.integer ? TEXF_COMPRESS : 0), -1, NULL);
-			else
+			loadmodel->brushq3.skinframe_lightmaps[ lightmapindex ] = skinframes[ i ];
+			loadmodel->brushq3.data_lightmaps[ lightmapindex ] = skinframes[ i ]->base;
+			if (loadmodel->brushq3.deluxemapping)
 			{
-				if(mod_q3bsp_sRGBlightmaps.integer)
-				{
-					textype_t t;
-					if(vid_sRGB.integer && vid_sRGB_fallback.integer && !vid.sRGB3D)
-					{
-						t = TEXTYPE_BGRA; // in stupid fallback mode, we upload lightmaps in sRGB form and just fix their brightness
-						// we fix the brightness consistently via lightmapscale
-					}
-					else
-						t = TEXTYPE_SRGB_BGRA; // normally, we upload lightmaps in sRGB form (possibly downconverted to linear)
-					loadmodel->brushq3.data_lightmaps [lightmapindex] = R_LoadTexture2D(loadmodel->texturepool, va(vabuf, sizeof(vabuf), "lightmap%04i", lightmapindex), mergedwidth, mergedheight, mergedpixels, t, TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), -1, NULL);
-				}
-				else
-				{
-					if(vid_sRGB.integer && vid_sRGB_fallback.integer && !vid.sRGB3D)
-						Image_MakesRGBColorsFromLinear_Lightmap(mergedpixels, mergedpixels, mergedwidth * mergedheight);
-					loadmodel->brushq3.data_lightmaps [lightmapindex] = R_LoadTexture2D(loadmodel->texturepool, va(vabuf, sizeof(vabuf), "lightmap%04i", lightmapindex), mergedwidth, mergedheight, mergedpixels, TEXTYPE_BGRA, TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), -1, NULL);
-				}
+				i++;
+				loadmodel->brushq3.skinframe_deluxemaps[ lightmapindex ] = skinframes[ i ];
+				loadmodel->brushq3.data_deluxemaps[ lightmapindex ] = skinframes[ i ]->base;
 			}
 		}
 	}
-
-	if (mergeddeluxepixels)
-		Mem_Free(mergeddeluxepixels);
-	Mem_Free(mergedpixels);
-	if(external)
+	else if( external && realcount == 1 )
 	{
-		for(i = 0; i < count; ++i)
-			Mem_Free(inpixels[i]);
+		// vortex: perfect case -  only one external lightmap present, allows us to skip some processing 
+		Con_DPrintf("Only one external lightmap present\n" );
+
+		// allocate texture data
+		loadmodel->brushq3.num_lightmapmergedwidthpower = 0;
+		loadmodel->brushq3.num_lightmapmergedheightpower = 0;
+		loadmodel->brushq3.num_mergedlightmaps = count;
+		loadmodel->brushq3.data_lightmaps = (rtexture_t **)Mem_Alloc(loadmodel->mempool, sizeof(rtexture_t *));
+		if( loadmodel->brushq3.deluxemapping )
+			loadmodel->brushq3.data_deluxemaps = (rtexture_t **)Mem_Alloc(loadmodel->mempool, sizeof(rtexture_t *));
+		if (loadmodel->texturepool == NULL && cls.state != ca_dedicated)
+			loadmodel->texturepool = R_AllocTexturePool();
+
+		// load deluxemap
+		if( loadmodel->brushq3.deluxemapping )
+			loadmodel->brushq3.data_deluxemaps[0] = R_LoadTexture2D( loadmodel->texturepool, va(vabuf, sizeof(vabuf), "deluxemap%04i", 1), image_width, image_height, inpixels[1], TEXTYPE_BGRA, TEXF_FORCELINEAR | (gl_texturecompression_q3bspdeluxemaps.integer ? TEXF_COMPRESS : 0), -1, NULL );
+		
+		// load lightmap
+		if( mod_q3bsp_sRGBlightmaps.integer )
+		{
+			textype_t t;
+			// in stupid fallback mode, we upload lightmaps in sRGB form and just fix their brightness
+			// we fix the brightness consistently via lightmapscale
+			if( vid_sRGB.integer && vid_sRGB_fallback.integer && !vid.sRGB3D )
+				t = TEXTYPE_BGRA;
+			else
+				t = TEXTYPE_SRGB_BGRA; // normally, we upload lightmaps in sRGB form (possibly downconverted to linear)
+			loadmodel->brushq3.data_lightmaps[0] = R_LoadTexture2D( loadmodel->texturepool, va(vabuf, sizeof(vabuf), "lightmap%04i", 0), image_width, image_height, inpixels[0], t, TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), -1, NULL );
+		}
+		else
+		{
+			if ( vid_sRGB.integer && vid_sRGB_fallback.integer && !vid.sRGB3D )
+				Image_MakesRGBColorsFromLinear_Lightmap( inpixels[0], inpixels[0], image_width * image_height );
+			loadmodel->brushq3.data_lightmaps[0] = R_LoadTexture2D( loadmodel->texturepool, va(vabuf, sizeof(vabuf), "lightmap%04i", 0), image_width, image_height, inpixels[0], TEXTYPE_BGRA, TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), -1, NULL );
+		}
+		if( external )
+			for( i = 0; i < count; ++i )
+				Mem_Free( inpixels[i] );
+	}
+	else
+	{
+		loadmodel->brushq3.lightmapmerged = true;
+		// figure out what the most reasonable merge power is within limits
+		// figure out how big the merged texture has to be
+		mergegoal = 128<<bound(0, mod_q3bsp_lightmapmergepower.integer, 6);
+		mergegoal = bound(size, mergegoal, (int)vid.maxtexturesize_2d);
+		while (mergegoal > size && mergegoal * mergegoal / 4 >= size * size * realcount)
+			mergegoal /= 2;
+		mergedwidth = mergegoal;
+		mergedheight = mergegoal;
+		// choose non-square size (2x1 aspect) if only half the space is used;
+		// this really only happens when the entire set fits in one texture, if
+		// there are multiple textures, we don't worry about shrinking the last
+		// one to fit, because the driver prefers the same texture size on
+		// consecutive draw calls...
+		if (mergedwidth * mergedheight / 2 >= size*size*realcount)
+			mergedheight /= 2;
+
+		loadmodel->brushq3.num_lightmapmergedwidthpower = 0;
+		loadmodel->brushq3.num_lightmapmergedheightpower = 0;
+		while (mergedwidth > size<<loadmodel->brushq3.num_lightmapmergedwidthpower)
+			loadmodel->brushq3.num_lightmapmergedwidthpower++;
+		while (mergedheight > size<<loadmodel->brushq3.num_lightmapmergedheightpower)
+			loadmodel->brushq3.num_lightmapmergedheightpower++;
+		loadmodel->brushq3.num_lightmapmergedwidthheightdeluxepower = loadmodel->brushq3.num_lightmapmergedwidthpower + loadmodel->brushq3.num_lightmapmergedheightpower + (loadmodel->brushq3.deluxemapping ? 1 : 0);
+
+		powerx = loadmodel->brushq3.num_lightmapmergedwidthpower;
+		powery = loadmodel->brushq3.num_lightmapmergedheightpower;
+		powerxy = powerx+powery;
+		powerdxy = loadmodel->brushq3.deluxemapping + powerxy;
+
+		mergedcolumns = 1 << powerx;
+		mergedrows = 1 << powery;
+		mergedrowsxcolumns = 1 << powerxy;
+
+		loadmodel->brushq3.num_mergedlightmaps = (realcount + (1 << powerxy) - 1) >> powerxy;
+		loadmodel->brushq3.data_lightmaps = (rtexture_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brushq3.num_mergedlightmaps * sizeof(rtexture_t *));
+		if (loadmodel->brushq3.deluxemapping)
+			loadmodel->brushq3.data_deluxemaps = (rtexture_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brushq3.num_mergedlightmaps * sizeof(rtexture_t *));
+
+		// allocate a texture pool if we need it
+		if (loadmodel->texturepool == NULL && cls.state != ca_dedicated)
+			loadmodel->texturepool = R_AllocTexturePool();
+
+		mergedpixels = (unsigned char *) Mem_Alloc(tempmempool, mergedwidth * mergedheight * 4);
+		mergeddeluxepixels = loadmodel->brushq3.deluxemapping ? (unsigned char *) Mem_Alloc(tempmempool, mergedwidth * mergedheight * 4) : NULL;
+		for (i = 0;i < count;i++)
+		{
+			// figure out which merged lightmap texture this fits into
+			realindex = i >> (int)loadmodel->brushq3.deluxemapping;
+			lightmapindex = i >> powerdxy;
+
+			// choose the destination address
+			mergebuf = (loadmodel->brushq3.deluxemapping && (i & 1)) ? mergeddeluxepixels : mergedpixels;
+			mergebuf += 4 * (realindex & (mergedcolumns-1))*size + 4 * ((realindex >> powerx) & (mergedrows-1))*mergedwidth*size;
+			if ((i & 1) == 0 || !loadmodel->brushq3.deluxemapping)
+				Con_DPrintf("copying original lightmap %i (%ix%i) to %i (at %i,%i)\n", i, size, size, lightmapindex, (realindex & (mergedcolumns-1))*size, ((realindex >> powerx) & (mergedrows-1))*size);
+
+			// convert pixels from RGB or BGRA while copying them into the destination rectangle
+			for (j = 0;j < size;j++)
+			for (k = 0;k < size;k++)
+			{
+				mergebuf[(j*mergedwidth+k)*4+0] = inpixels[i][(j*size+k)*bytesperpixel+rgbmap[0]];
+				mergebuf[(j*mergedwidth+k)*4+1] = inpixels[i][(j*size+k)*bytesperpixel+rgbmap[1]];
+				mergebuf[(j*mergedwidth+k)*4+2] = inpixels[i][(j*size+k)*bytesperpixel+rgbmap[2]];
+				mergebuf[(j*mergedwidth+k)*4+3] = 255;
+			}
+
+			// upload texture if this was the last tile being written to the texture
+			if (((realindex + 1) & (mergedrowsxcolumns - 1)) == 0 || (realindex + 1) == realcount)
+			{
+				if (loadmodel->brushq3.deluxemapping && (i & 1))
+					loadmodel->brushq3.data_deluxemaps[lightmapindex] = R_LoadTexture2D(loadmodel->texturepool, va(vabuf, sizeof(vabuf), "deluxemap%04i", lightmapindex), mergedwidth, mergedheight, mergeddeluxepixels, TEXTYPE_BGRA, TEXF_FORCELINEAR | (gl_texturecompression_q3bspdeluxemaps.integer ? TEXF_COMPRESS : 0), -1, NULL);
+				else
+				{
+					if(mod_q3bsp_sRGBlightmaps.integer)
+					{
+						textype_t t;
+						// in stupid fallback mode, we upload lightmaps in sRGB form and just fix their brightness
+						// we fix the brightness consistently via lightmapscale
+						if(vid_sRGB.integer && vid_sRGB_fallback.integer && !vid.sRGB3D)
+							t = TEXTYPE_BGRA; 
+						else
+							t = TEXTYPE_SRGB_BGRA; // normally, we upload lightmaps in sRGB form (possibly downconverted to linear)
+						loadmodel->brushq3.data_lightmaps [lightmapindex] = R_LoadTexture2D(loadmodel->texturepool, va(vabuf, sizeof(vabuf), "lightmap%04i", lightmapindex), mergedwidth, mergedheight, mergedpixels, t, TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), -1, NULL);
+					}
+					else
+					{
+						if(vid_sRGB.integer && vid_sRGB_fallback.integer && !vid.sRGB3D)
+							Image_MakesRGBColorsFromLinear_Lightmap(mergedpixels, mergedpixels, mergedwidth * mergedheight);
+						loadmodel->brushq3.data_lightmaps [lightmapindex] = R_LoadTexture2D(loadmodel->texturepool, va(vabuf, sizeof(vabuf), "lightmap%04i", lightmapindex), mergedwidth, mergedheight, mergedpixels, TEXTYPE_BGRA, TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), -1, NULL);
+					}
+				}
+			}
+		}
+
+		if (mergeddeluxepixels)
+			Mem_Free(mergeddeluxepixels);
+		Mem_Free(mergedpixels);
+		if (external)
+			for(i = 0; i < count; ++i)
+				Mem_Free(inpixels[i]);
 	}
 }
 
@@ -5680,7 +5802,7 @@ static void Mod_Q3BSP_LoadFaces(lump_t *l)
 		VectorClear(out->maxs);
 		if (out->num_vertices)
 		{
-			if (cls.state != ca_dedicated && out->lightmaptexture)
+			if (cls.state != ca_dedicated && out->lightmaptexture && loadmodel->brushq3.lightmapmerged)
 			{
 				// figure out which part of the merged lightmap this fits into
 				int lightmapindex = LittleLong(in->lightmapindex) >> (loadmodel->brushq3.deluxemapping ? 1 : 0);
@@ -7021,7 +7143,8 @@ bih_t *Mod_MakeCollisionBIH(dp_model_t *model, qboolean userendersurfaces, bih_t
 	if (userendersurfaces)
 	{
 		for (j = 0, surface = model->data_surfaces + model->firstmodelsurface;j < nummodelsurfaces;j++, surface++)
-			bihnumleafs += surface->num_triangles;
+			if (!(surface->texture->basematerialflags & MATERIALFLAG_NOBIH))
+				bihnumleafs += surface->num_triangles;
 	}
 	else
 	{
@@ -7030,6 +7153,8 @@ bih_t *Mod_MakeCollisionBIH(dp_model_t *model, qboolean userendersurfaces, bih_t
 				bihnumleafs++;
 		for (j = 0, surface = model->data_surfaces + model->firstmodelsurface;j < nummodelsurfaces;j++, surface++)
 		{
+			if (surface->texture->basematerialflags & MATERIALFLAG_NOBIH)
+				continue;
 			if (surface->texture->basematerialflags & MATERIALFLAG_MESHCOLLISIONS)
 				bihnumleafs += surface->num_triangles + surface->num_collisiontriangles;
 			else
@@ -7053,7 +7178,7 @@ bih_t *Mod_MakeCollisionBIH(dp_model_t *model, qboolean userendersurfaces, bih_t
 	{
 		for (triangleindex = 0, e = renderelement3i + 3*surface->num_firsttriangle;triangleindex < surface->num_triangles;triangleindex++, e += 3)
 		{
-			if (!userendersurfaces && !(surface->texture->basematerialflags & MATERIALFLAG_MESHCOLLISIONS))
+			if (surface->texture->basematerialflags & MATERIALFLAG_NOBIH || (!userendersurfaces && !(surface->texture->basematerialflags & MATERIALFLAG_MESHCOLLISIONS)))
 				continue;
 			bihleafs[bihleafindex].type = BIH_RENDERTRIANGLE;
 			bihleafs[bihleafindex].textureindex = surface->texture - model->data_textures;
@@ -7205,8 +7330,15 @@ static void Mod_Q3BSP_RecursiveFindNumLeafs(mnode_t *node)
 static void Mod_Q3BSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 {
 	int i, j, lumps;
+	double time_start, time_end, time_loading, timings[32];
+	char *timing_names[32];
+	int num_timings;
 	q3dheader_t *header;
 	float corner[3], yawradius, modelradius;
+
+	num_timings = 0;
+	time_loading = time_start = time_end = Sys_DirtyTime();
+	#define Q3BSPTimingStat(t) if (num_timings < 32) { time_end = Sys_DirtyTime(); timings[num_timings] = time_end - time_start; timing_names[num_timings] = t; time_start = time_end; num_timings++; }
 
 	mod->modeldatatypestring = "Q3BSP";
 
@@ -7281,57 +7413,70 @@ static void Mod_Q3BSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		header->lumps[i].filelen = 0;
 	}
 	*/
+	Q3BSPTimingStat("init");
 
 	mod->brush.qw_md4sum = 0;
 	mod->brush.qw_md4sum2 = 0;
-	for (i = 0;i < lumps;i++)
+	if (mod_bsp_qwchecksum.integer)
 	{
-		if (i == Q3LUMP_ENTITIES)
-			continue;
-		mod->brush.qw_md4sum ^= Com_BlockChecksum(mod_base + header->lumps[i].fileofs, header->lumps[i].filelen);
-		if (i == Q3LUMP_PVS || i == Q3LUMP_LEAFS || i == Q3LUMP_NODES)
-			continue;
-		mod->brush.qw_md4sum2 ^= Com_BlockChecksum(mod_base + header->lumps[i].fileofs, header->lumps[i].filelen);
+		for (i = 0;i < lumps;i++)
+		{
+			if (i == Q3LUMP_ENTITIES)
+				continue;
+			mod->brush.qw_md4sum ^= Com_BlockChecksum(mod_base + header->lumps[i].fileofs, header->lumps[i].filelen);
+			if (i == Q3LUMP_PVS || i == Q3LUMP_LEAFS || i == Q3LUMP_NODES)
+				continue;
+			mod->brush.qw_md4sum2 ^= Com_BlockChecksum(mod_base + header->lumps[i].fileofs, header->lumps[i].filelen);
 
-		// all this checksumming can take a while, so let's send keepalives here too
-		CL_KeepaliveMessage(false);
+			// all this checksumming can take a while, so let's send keepalives here too
+			CL_KeepaliveMessage(false);
+		}
+		Q3BSPTimingStat("checksum");
 	}
 
-	Mod_Q3BSP_LoadEntities(&header->lumps[Q3LUMP_ENTITIES]);
-	Mod_Q3BSP_LoadTextures(&header->lumps[Q3LUMP_TEXTURES]);
-	Mod_Q3BSP_LoadPlanes(&header->lumps[Q3LUMP_PLANES]);
+	Mod_Q3BSP_LoadEntities(&header->lumps[Q3LUMP_ENTITIES]); Q3BSPTimingStat("entities");
+	Mod_Q3BSP_LoadTextures(&header->lumps[Q3LUMP_TEXTURES]); Q3BSPTimingStat("textures");
+	Mod_Q3BSP_LoadPlanes(&header->lumps[Q3LUMP_PLANES]); Q3BSPTimingStat("planes");
 	if (header->version == Q3BSPVERSION_IG)
 		Mod_Q3BSP_LoadBrushSides_IG(&header->lumps[Q3LUMP_BRUSHSIDES]);
 	else
 		Mod_Q3BSP_LoadBrushSides(&header->lumps[Q3LUMP_BRUSHSIDES]);
-	Mod_Q3BSP_LoadBrushes(&header->lumps[Q3LUMP_BRUSHES]);
-	Mod_Q3BSP_LoadEffects(&header->lumps[Q3LUMP_EFFECTS]);
-	Mod_Q3BSP_LoadVertices(&header->lumps[Q3LUMP_VERTICES]);
-	Mod_Q3BSP_LoadTriangles(&header->lumps[Q3LUMP_TRIANGLES]);
-	Mod_Q3BSP_LoadLightmaps(&header->lumps[Q3LUMP_LIGHTMAPS], &header->lumps[Q3LUMP_FACES]);
-	Mod_Q3BSP_LoadFaces(&header->lumps[Q3LUMP_FACES]);
-	Mod_Q3BSP_LoadModels(&header->lumps[Q3LUMP_MODELS]);
-	Mod_Q3BSP_LoadLeafBrushes(&header->lumps[Q3LUMP_LEAFBRUSHES]);
-	Mod_Q3BSP_LoadLeafFaces(&header->lumps[Q3LUMP_LEAFFACES]);
-	Mod_Q3BSP_LoadLeafs(&header->lumps[Q3LUMP_LEAFS]);
-	Mod_Q3BSP_LoadNodes(&header->lumps[Q3LUMP_NODES]);
-	Mod_Q3BSP_LoadLightGrid(&header->lumps[Q3LUMP_LIGHTGRID]);
-	Mod_Q3BSP_LoadPVS(&header->lumps[Q3LUMP_PVS]);
+	Q3BSPTimingStat("brushsides");
+	Mod_Q3BSP_LoadBrushes(&header->lumps[Q3LUMP_BRUSHES]); Q3BSPTimingStat("brushes");
+	Mod_Q3BSP_LoadEffects(&header->lumps[Q3LUMP_EFFECTS]); Q3BSPTimingStat("effects");
+	Mod_Q3BSP_LoadVertices(&header->lumps[Q3LUMP_VERTICES]); Q3BSPTimingStat("vertices");
+	Mod_Q3BSP_LoadTriangles(&header->lumps[Q3LUMP_TRIANGLES]); Q3BSPTimingStat("triangles");
+	Mod_Q3BSP_LoadLightmaps(&header->lumps[Q3LUMP_LIGHTMAPS], &header->lumps[Q3LUMP_FACES]); Q3BSPTimingStat("lightmaps");
+	Mod_Q3BSP_LoadFaces(&header->lumps[Q3LUMP_FACES]); Q3BSPTimingStat("faces");
+	Mod_Q3BSP_LoadModels(&header->lumps[Q3LUMP_MODELS]); Q3BSPTimingStat("models");
+	Mod_Q3BSP_LoadLeafBrushes(&header->lumps[Q3LUMP_LEAFBRUSHES]); Q3BSPTimingStat("brushes");
+	Mod_Q3BSP_LoadLeafFaces(&header->lumps[Q3LUMP_LEAFFACES]); Q3BSPTimingStat("leaffaces");
+	Mod_Q3BSP_LoadLeafs(&header->lumps[Q3LUMP_LEAFS]); Q3BSPTimingStat("leafs");
+	Mod_Q3BSP_LoadNodes(&header->lumps[Q3LUMP_NODES]); Q3BSPTimingStat("nodes");
+	Mod_Q3BSP_LoadLightGrid(&header->lumps[Q3LUMP_LIGHTGRID]); Q3BSPTimingStat("lightgrid");
+	Mod_Q3BSP_LoadPVS(&header->lumps[Q3LUMP_PVS]); Q3BSPTimingStat("pvs");
 	loadmodel->brush.numsubmodels = loadmodel->brushq3.num_models;
 
 	// the MakePortals code works fine on the q3bsp data as well
 	if (mod_bsp_portalize.integer)
+	{
 		Mod_Q1BSP_MakePortals();
+		Q3BSPTimingStat("portalize");
+	}
 
 	// FIXME: shader alpha should replace r_wateralpha support in q3bsp
 	loadmodel->brush.supportwateralpha = true;
 
 	// make a single combined shadow mesh to allow optimized shadow volume creation
 	if (mod_bsp_createshadowmesh.integer)
+	{
 		Mod_Q1BSP_CreateShadowMesh(loadmodel);
+		Q3BSPTimingStat("shadowmesh");
+	}
 
 	loadmodel->brush.num_leafs = 0;
 	Mod_Q3BSP_RecursiveFindNumLeafs(loadmodel->brush.data_nodes);
+	Q3BSPTimingStat("recursivenumleafs");
 
 	if (loadmodel->brush.numsubmodels)
 		loadmodel->brush.submodels = (dp_model_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brush.numsubmodels * sizeof(dp_model_t *));
@@ -7376,27 +7521,30 @@ static void Mod_Q3BSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 
 		VectorCopy(mod->brushq3.data_models[i].mins, mod->normalmins);
 		VectorCopy(mod->brushq3.data_models[i].maxs, mod->normalmaxs);
-		// enlarge the bounding box to enclose all geometry of this model,
-		// because q3map2 sometimes lies (mostly to affect the lightgrid),
-		// which can in turn mess up the farclip (as well as culling when
-		// outside the level - an unimportant concern)
 
-		//printf("Editing model %d... BEFORE re-bounding: %f %f %f - %f %f %f\n", i, mod->normalmins[0], mod->normalmins[1], mod->normalmins[2], mod->normalmaxs[0], mod->normalmaxs[1], mod->normalmaxs[2]);
-		for (j = 0;j < mod->nummodelsurfaces;j++)
+		if (mod_q3bsp_fixq3map2bugs.integer)
 		{
-			const msurface_t *surface = mod->data_surfaces + j + mod->firstmodelsurface;
-			const float *v = mod->surfmesh.data_vertex3f + 3 * surface->num_firstvertex;
-			int k;
-			if (!surface->num_vertices)
-				continue;
-			for (k = 0;k < surface->num_vertices;k++, v += 3)
+			// enlarge the bounding box to enclose all geometry of this model,
+			// because q3map2 sometimes lies (mostly to affect the lightgrid),
+			// which can in turn mess up the farclip (as well as culling when
+			// outside the level - an unimportant concern)
+			//printf("Editing model %d... BEFORE re-bounding: %f %f %f - %f %f %f\n", i, mod->normalmins[0], mod->normalmins[1], mod->normalmins[2], mod->normalmaxs[0], mod->normalmaxs[1], mod->normalmaxs[2]);
+			for (j = 0;j < mod->nummodelsurfaces;j++)
 			{
-				mod->normalmins[0] = min(mod->normalmins[0], v[0]);
-				mod->normalmins[1] = min(mod->normalmins[1], v[1]);
-				mod->normalmins[2] = min(mod->normalmins[2], v[2]);
-				mod->normalmaxs[0] = max(mod->normalmaxs[0], v[0]);
-				mod->normalmaxs[1] = max(mod->normalmaxs[1], v[1]);
-				mod->normalmaxs[2] = max(mod->normalmaxs[2], v[2]);
+				const msurface_t *surface = mod->data_surfaces + j + mod->firstmodelsurface;
+				const float *v = mod->surfmesh.data_vertex3f + 3 * surface->num_firstvertex;
+				int k;
+				if (!surface->num_vertices)
+					continue;
+				for (k = 0;k < surface->num_vertices;k++, v += 3)
+				{
+					mod->normalmins[0] = min(mod->normalmins[0], v[0]);
+					mod->normalmins[1] = min(mod->normalmins[1], v[1]);
+					mod->normalmins[2] = min(mod->normalmins[2], v[2]);
+					mod->normalmaxs[0] = max(mod->normalmaxs[0], v[0]);
+					mod->normalmaxs[1] = max(mod->normalmaxs[1], v[1]);
+					mod->normalmaxs[2] = max(mod->normalmaxs[2], v[2]);
+				}
 			}
 		}
 		//printf("Editing model %d... AFTER re-bounding: %f %f %f - %f %f %f\n", i, mod->normalmins[0], mod->normalmins[1], mod->normalmins[2], mod->normalmaxs[0], mod->normalmaxs[1], mod->normalmaxs[2]);
@@ -7437,6 +7585,7 @@ static void Mod_Q3BSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		if (i == 0)
 			Mod_BuildVBOs();
 	}
+	Q3BSPTimingStat("submodels");
 
 	if (mod_q3bsp_sRGBlightmaps.integer)
 	{
@@ -7461,8 +7610,13 @@ static void Mod_Q3BSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 			loadmodel->lightmapscale *= 2.336f; // fixes neutral level
 		}
 	}
+	Q3BSPTimingStat("srgblightmaps");
 
-	Con_DPrintf("Stats for q3bsp model \"%s\": %i faces, %i nodes, %i leafs, %i clusters, %i clusterportals, mesh: %i vertices, %i triangles, %i surfaces\n", loadmodel->name, loadmodel->num_surfaces, loadmodel->brush.num_nodes, loadmodel->brush.num_leafs, mod->brush.num_pvsclusters, loadmodel->brush.num_portals, loadmodel->surfmesh.num_vertices, loadmodel->surfmesh.num_triangles, loadmodel->num_surfaces);
+	time_loading = time_end - time_loading;
+	Con_DPrintf("Stats for q3bsp model \"%s\": %i faces, %i nodes, %i leafs, %i clusters, %i clusterportals, mesh: %i vertices, %i triangles, %i surfaces, loaded in %f seconds\n", loadmodel->name, loadmodel->num_surfaces, loadmodel->brush.num_nodes, loadmodel->brush.num_leafs, mod->brush.num_pvsclusters, loadmodel->brush.num_portals, loadmodel->surfmesh.num_vertices, loadmodel->surfmesh.num_triangles, loadmodel->num_surfaces, time_loading);
+	Con_DPrintf("Loading timings for q3bsp model:\n");
+	for (i = 0; i < num_timings; i++)
+		Con_DPrintf("    %s: %f (%3.3f percent)\n", timing_names[i], timings[i], (timings[i]/time_loading)*100.0f);
 }
 
 void Mod_IBSP_Load(dp_model_t *mod, void *buffer, void *bufferend)

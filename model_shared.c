@@ -119,6 +119,12 @@ static void mod_newmap(void)
 				R_SkinFrame_MarkUsed(mod->brush.solidskyskinframe);
 			if (mod->brush.alphaskyskinframe)
 				R_SkinFrame_MarkUsed(mod->brush.alphaskyskinframe);
+			if (mod->brushq3.skinframe_lightmaps)
+				for (k = 0;k < mod->brushq3.num_mergedlightmaps;k++)
+					R_SkinFrame_MarkUsed(mod->brushq3.skinframe_lightmaps[k]);
+			if (mod->brushq3.skinframe_deluxemaps)
+				for (k = 0;k < mod->brushq3.num_mergedlightmaps;k++)
+					R_SkinFrame_MarkUsed(mod->brushq3.skinframe_deluxemaps[k]);
 		}
 	}
 
@@ -1734,6 +1740,7 @@ void Mod_LoadQ3Shaders(void)
 			shader.dpshadow = false;
 			shader.dpnoshadow = false;
 			shader.dpmeshcollisions = false;
+			shader.dpnobih = false;
 			shader.dpshaderkill = false;
 			shader.dpreflectcube[0] = 0;
 			shader.reflectmin = 0;
@@ -2083,6 +2090,8 @@ void Mod_LoadQ3Shaders(void)
 						shader.surfaceparms |= Q3SURFACEPARM_AREAPORTAL;
 					else if (!strcasecmp(parameter[1], "botclip"))
 						shader.surfaceparms |= Q3SURFACEPARM_BOTCLIP;
+					else if (!strcasecmp(parameter[1], "monsterclip"))
+						;
 					else if (!strcasecmp(parameter[1], "clusterportal"))
 						shader.surfaceparms |= Q3SURFACEPARM_CLUSTERPORTAL;
 					else if (!strcasecmp(parameter[1], "detail"))
@@ -2171,6 +2180,8 @@ void Mod_LoadQ3Shaders(void)
 					strlcpy(shader.dpreflectcube, parameter[1], sizeof(shader.dpreflectcube));
 				else if (!strcasecmp(parameter[0], "dpmeshcollisions"))
 					shader.dpmeshcollisions = true;
+				else if (!strcasecmp(parameter[0], "dpnobih"))
+					shader.dpnobih = true;
 				// this sets dpshaderkill to true if dpshaderkillifcvarzero was used, and to false if dpnoshaderkillifcvarzero was used
 				else if (((dpshaderkill = !strcasecmp(parameter[0], "dpshaderkillifcvarzero")) || !strcasecmp(parameter[0], "dpnoshaderkillifcvarzero")) && numparameters >= 2)
 				{
@@ -2580,7 +2591,7 @@ nothing                GL_ZERO GL_ONE
 				{
 					texture->skinframes[j] = NULL;
 				}
-				else if (!(texture->skinframes[j] = R_SkinFrame_LoadExternal(primarylayer->texturename[j], (primarylayer->texflags & texflagsmask) | texflagsor, false)))
+				else if (!(texture->skinframes[j] = R_SkinFrame_LoadExternal(primarylayer->texturename[j], (primarylayer->texflags & texflagsmask) | texflagsor, false, false)))
 				{
 					Con_Printf("^1%s:^7 could not load texture ^3\"%s\"^7 (frame %i) for shader ^2\"%s\"\n", loadmodel->name, primarylayer->texturename[j], j, texture->name);
 					texture->skinframes[j] = R_SkinFrame_LoadMissing();
@@ -2601,7 +2612,7 @@ nothing                GL_ZERO GL_ONE
 				{
 					texture->skinframes[j] = NULL;
 				}
-				else if (!(texture->backgroundskinframes[j] = R_SkinFrame_LoadExternal(backgroundlayer->texturename[j], (backgroundlayer->texflags & texflagsmask) | texflagsor, false)))
+				else if (!(texture->backgroundskinframes[j] = R_SkinFrame_LoadExternal(backgroundlayer->texturename[j], (backgroundlayer->texflags & texflagsmask) | texflagsor, false, false)))
 				{
 					Con_Printf("^1%s:^7 could not load texture ^3\"%s\"^7 (background frame %i) for shader ^2\"%s\"\n", loadmodel->name, backgroundlayer->texturename[j], j, texture->name);
 					texture->backgroundskinframes[j] = R_SkinFrame_LoadMissing();
@@ -2715,6 +2726,8 @@ nothing                GL_ZERO GL_ONE
 
 		if (shader->dpmeshcollisions)
 			texture->basematerialflags |= MATERIALFLAG_MESHCOLLISIONS;
+		if (shader->dpnobih)
+			texture->basematerialflags |= MATERIALFLAG_NOBIH;
 		if (shader->dpshaderkill && developer_extra.integer)
 			Con_DPrintf("^1%s:^7 killing shader ^3\"%s\" because of cvar\n", loadmodel->name, name);
 	}
@@ -2760,7 +2773,7 @@ nothing                GL_ZERO GL_ONE
 		{
 			if (fallback)
 			{
-				if ((texture->skinframes[0] = R_SkinFrame_LoadExternal(texture->name, defaulttexflags, false)))
+				if ((texture->skinframes[0] = R_SkinFrame_LoadExternal(texture->name, defaulttexflags, false, false)))
 				{
 					if(texture->skinframes[0]->hasalpha)
 						texture->basematerialflags |= MATERIALFLAG_ALPHA | MATERIALFLAG_BLENDED | MATERIALFLAG_NOSHADOW;

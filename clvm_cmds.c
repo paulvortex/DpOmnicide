@@ -3472,7 +3472,7 @@ static void VM_CL_R_PolygonBegin (prvm_prog_t *prog)
 		while(sf && sf->textureflags != tf);
 
 		if(!sf || !sf->base)
-			sf = R_SkinFrame_LoadExternal(picname, tf, true);
+			sf = R_SkinFrame_LoadExternal(picname, tf, false, true);
 
 		if(sf)
 			R_SkinFrame_MarkUsed(sf);

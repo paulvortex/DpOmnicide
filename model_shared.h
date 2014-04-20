@@ -466,6 +466,7 @@ typedef struct q3shaderinfo_s
 
 	// add collisions to all triangles of the surface
 	qboolean dpmeshcollisions;
+	qboolean dpnobih;
 
 	// kill shader based on cvar checks
 	qboolean dpshaderkill;
@@ -921,6 +922,8 @@ typedef struct model_brushq3_s
 	int num_lightmapmerge;
 	rtexture_t **data_lightmaps;
 	rtexture_t **data_deluxemaps;
+	skinframe_t **skinframe_lightmaps;
+	skinframe_t **skinframe_deluxemaps;
 
 	// voxel light data with directional shading
 	int num_lightgrid;
@@ -943,6 +946,9 @@ typedef struct model_brushq3_s
 	// true if the detected deluxemaps are the modelspace kind, rather than
 	// the faster tangentspace kind
 	qboolean deluxemapping_modelspace;
+	// true if lightmap merging has been processed
+	// so map surfaces need TC swizzle
+	qboolean lightmapmerged;
 	// size of lightmaps (128 by default, but may be another poweroftwo if
 	// external lightmaps are used (q3map2 -lightmapsize)
 	int lightmapsize;

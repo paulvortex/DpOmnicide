@@ -139,6 +139,8 @@ static textypeinfo_t textype_dxt1                        = {"dxt1",             
 static textypeinfo_t textype_dxt1a                       = {"dxt1a",                    TEXTYPE_DXT1A         ,  4,  0,  0.5f, GL_COMPRESSED_RGBA_S3TC_DXT1_EXT      , 0                 , 0                };
 static textypeinfo_t textype_dxt3                        = {"dxt3",                     TEXTYPE_DXT3          ,  4,  0,  1.0f, GL_COMPRESSED_RGBA_S3TC_DXT3_EXT      , 0                 , 0                };
 static textypeinfo_t textype_dxt5                        = {"dxt5",                     TEXTYPE_DXT5          ,  4,  0,  1.0f, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT      , 0                 , 0                };
+static textypeinfo_t textype_dxt5_ycg2                   = {"dxt5",                     TEXTYPE_DXT5_YCG2     ,  4,  0,  1.0f, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT      , 0                 , 0                };
+static textypeinfo_t textype_dxt5_ycg4                   = {"dxt5",                     TEXTYPE_DXT5_YCG4     ,  4,  0,  1.0f, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT      , 0                 , 0                };
 static textypeinfo_t textype_sRGB_palette                = {"sRGB_palette",             TEXTYPE_PALETTE       ,  1,  4,  4.0f, GL_SRGB_EXT                           , GL_BGRA           , GL_UNSIGNED_BYTE };
 static textypeinfo_t textype_sRGB_palette_alpha          = {"sRGB_palette_alpha",       TEXTYPE_PALETTE       ,  1,  4,  4.0f, GL_SRGB_ALPHA_EXT                     , GL_BGRA           , GL_UNSIGNED_BYTE };
 static textypeinfo_t textype_sRGB_rgba                   = {"sRGB_rgba",                TEXTYPE_RGBA          ,  4,  4,  4.0f, GL_SRGB_EXT                           , GL_RGBA           , GL_UNSIGNED_BYTE };
@@ -301,6 +303,8 @@ static textypeinfo_t *R_GetTexTypeInfo(textype_t textype, int flags)
 	case TEXTYPE_DXT1A: return &textype_dxt1a;
 	case TEXTYPE_DXT3: return &textype_dxt3;
 	case TEXTYPE_DXT5: return &textype_dxt5;
+	case TEXTYPE_DXT5_YCG2: return &textype_dxt5_ycg2;
+	case TEXTYPE_DXT5_YCG4: return &textype_dxt5_ycg4;
 	case TEXTYPE_PALETTE: return (flags & TEXF_ALPHA) ? &textype_palette_alpha : &textype_palette;
 	case TEXTYPE_RGBA: return ((flags & TEXF_COMPRESS) && vid.support.ext_texture_compression_s3tc) ? ((flags & TEXF_ALPHA) ? &textype_rgba_alpha_compress : &textype_rgba_compress) : ((flags & TEXF_ALPHA) ? &textype_rgba_alpha : &textype_rgba);
 	case TEXTYPE_BGRA: return ((flags & TEXF_COMPRESS) && vid.support.ext_texture_compression_s3tc) ? ((flags & TEXF_ALPHA) ? &textype_bgra_alpha_compress : &textype_bgra_compress) : ((flags & TEXF_ALPHA) ? &textype_bgra_alpha : &textype_bgra);
@@ -1756,6 +1760,8 @@ static rtexture_t *R_SetupTexture(rtexturepool_t *rtexturepool, const char *iden
 	case TEXTYPE_DXT3:
 	case TEXTYPE_SRGB_DXT3:
 	case TEXTYPE_DXT5:
+	case TEXTYPE_DXT5_YCG2:
+	case TEXTYPE_DXT5_YCG4:
 	case TEXTYPE_SRGB_DXT5:
 		flags |= TEXF_ALPHA;
 		break;
@@ -2501,7 +2507,19 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 				Con_Printf("^1%s: expecting DXT4 image without premultiplied alpha, got DXT5 image without premultiplied alpha\n", filename);
 			}
 		}
-		textype = TEXTYPE_DXT5;
+		// vortex: detect YCoCg Scaled Swizzled format
+		if (!memcmp(dds+44, "YCG2", 4))
+		{
+			textype = TEXTYPE_DXT5_YCG2;
+			flags |= TEXF_ALPHA; // YCoCg Scaled DDS files may have no alpha flag, as unswizzled texture doesn't contain alpha by itself
+		}
+		else if (!memcmp(dds+44, "YCG4", 4))
+		{
+			textype = TEXTYPE_DXT5_YCG4;
+			flags |= TEXF_ALPHA; // YCoCg Scaled Gamma 2.0 DDS files may have no alpha flag, as unswizzled texture doesn't contain alpha by itself
+		}
+		else
+			textype = TEXTYPE_DXT5;
 		bytesperblock = 16;
 		bytesperpixel = 0;
 		size = INTOVERFLOW_MUL(INTOVERFLOW_MUL(INTOVERFLOW_DIV(INTOVERFLOW_ADD(dds_width, 3), 4), INTOVERFLOW_DIV(INTOVERFLOW_ADD(dds_height, 3), 4)), bytesperblock);
@@ -2520,8 +2538,9 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 		return NULL;
 	}
 
+
 	// when requesting a non-alpha texture and we have DXT3/5, convert to DXT1
-	if(!(flags & TEXF_ALPHA) && (textype == TEXTYPE_DXT3 || textype == TEXTYPE_DXT5))
+	if(!(flags & TEXF_ALPHA) && (textype == TEXTYPE_DXT3 || textype == TEXTYPE_DXT5 || textype == TEXTYPE_DXT5_YCG2 || textype == TEXTYPE_DXT5_YCG4))
 	{
 		textype = TEXTYPE_DXT1;
 		bytesperblock = 8;
@@ -2569,7 +2588,6 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 	{
 		// this is quarter res, so do not scale down more than we have to
 		miplevel -= 2;
-
 		if(miplevel < 0)
 			Con_DPrintf("WARNING: fake software decoding of compressed texture %s degraded quality\n", filename);
 	}
@@ -2608,7 +2626,7 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 			p[2] = (((c >> 11) & 0x1F) + ((c >> 27) & 0x1F)) * (0.5f / 31.0f * 255.0f);
 			p[1] = (((c >>  5) & 0x3F) + ((c >> 21) & 0x3F)) * (0.5f / 63.0f * 255.0f);
 			p[0] = (((c      ) & 0x1F) + ((c >> 16) & 0x1F)) * (0.5f / 31.0f * 255.0f);
-			if(textype == TEXTYPE_DXT5)
+			if(textype == TEXTYPE_DXT5 || textype == TEXTYPE_DXT5_YCG2 || textype == TEXTYPE_DXT5_YCG4) // todo: implement YCoCg Scaled software decode?
 				p[3] = (0.5 * mippixels_start[i-8] + 0.5 * mippixels_start[i-7]);
 			else if(textype == TEXTYPE_DXT3)
 				p[3] = (
@@ -2653,7 +2671,7 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 				avgcolor[0] += ((c >> 11) & 0x1F) + ((c >> 27) & 0x1F);
 				avgcolor[1] += ((c >>  5) & 0x3F) + ((c >> 21) & 0x3F);
 				avgcolor[2] += ((c      ) & 0x1F) + ((c >> 16) & 0x1F);
-				if(textype == TEXTYPE_DXT5)
+				if(textype == TEXTYPE_DXT5 || textype == TEXTYPE_DXT5_YCG2 || textype == TEXTYPE_DXT5_YCG4)
 					avgcolor[3] += (mippixels[i-8] + (int) mippixels[i-7]) * (0.5f / 255.0f);
 				else if(textype == TEXTYPE_DXT3)
 					avgcolor[3] += (
@@ -2699,11 +2717,13 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 		{
 			switch(textype)
 			{
-			case TEXTYPE_DXT1:    textype = TEXTYPE_SRGB_DXT1   ;break;
-			case TEXTYPE_DXT1A:   textype = TEXTYPE_SRGB_DXT1A  ;break;
-			case TEXTYPE_DXT3:    textype = TEXTYPE_SRGB_DXT3   ;break;
-			case TEXTYPE_DXT5:    textype = TEXTYPE_SRGB_DXT5   ;break;
-			case TEXTYPE_RGBA:    textype = TEXTYPE_SRGB_RGBA   ;break;
+			case TEXTYPE_DXT1:      textype = TEXTYPE_SRGB_DXT1   ;break;
+			case TEXTYPE_DXT1A:     textype = TEXTYPE_SRGB_DXT1A  ;break;
+			case TEXTYPE_DXT3:      textype = TEXTYPE_SRGB_DXT3   ;break;
+			case TEXTYPE_DXT5:      textype = TEXTYPE_SRGB_DXT5   ;break;
+			case TEXTYPE_DXT5_YCG2: textype = TEXTYPE_SRGB_DXT5   ;break;
+			case TEXTYPE_DXT5_YCG4: textype = TEXTYPE_SRGB_DXT5   ;break;
+			case TEXTYPE_RGBA:      textype = TEXTYPE_SRGB_RGBA   ;break;
 			default:
 				break;
 			}
@@ -2716,6 +2736,8 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 			case TEXTYPE_DXT1A:
 			case TEXTYPE_DXT3:
 			case TEXTYPE_DXT5:
+			case TEXTYPE_DXT5_YCG2:
+			case TEXTYPE_DXT5_YCG4:
 				{
 					for (i = bytesperblock == 16 ? 8 : 0;i < mipsize_total;i += bytesperblock)
 					{
@@ -2797,7 +2819,6 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 		flags &= ~TEXF_MIPMAP;
 
 	texinfo = R_GetTexTypeInfo(textype, flags);
-
 	glt = (gltexture_t *)Mem_ExpandableArray_AllocRecord(&texturearray);
 	strlcpy (glt->identifier, filename, sizeof(glt->identifier));
 	glt->pool = pool;
@@ -2856,6 +2877,8 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 			case TEXTYPE_DXT1: case TEXTYPE_DXT1A: d3dformat = D3DFMT_DXT1;break;
 			case TEXTYPE_DXT3: d3dformat = D3DFMT_DXT3;break;
 			case TEXTYPE_DXT5: d3dformat = D3DFMT_DXT5;break;
+			case TEXTYPE_DXT5_YCG2: d3dformat = D3DFMT_DXT5;break;
+			case TEXTYPE_DXT5_YCG4: d3dformat = D3DFMT_DXT5;break;
 			default: d3dformat = D3DFMT_A8R8G8B8;Host_Error("R_LoadTextureDDSFile: unsupported texture type %i when picking D3DFMT", (int)textype);break;
 			}
 			d3dusage = 0;
@@ -3047,6 +3070,11 @@ int R_TextureHeight(rtexture_t *rt)
 int R_TextureFlags(rtexture_t *rt)
 {
 	return rt ? ((gltexture_t *)rt)->flags : 0;
+}
+
+textype_t R_TextureType(rtexture_t *rt)
+{
+	return rt ? ((gltexture_t *)rt)->textype->textype : TEXTYPE_RGBA;
 }
 
 void R_UpdateTexture(rtexture_t *rt, const unsigned char *data, int x, int y, int z, int width, int height, int depth)
