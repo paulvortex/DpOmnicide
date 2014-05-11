@@ -48,6 +48,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define SPRITE_VERSION		1
 #define SPRITEHL_VERSION	2
 #define SPRITE32_VERSION	32
+#define SPRITEPACKED_VERSION	128
+#define SPRITEPACKED32_VERSION	160
 
 #define SPRITE2_VERSION		2
 
@@ -112,7 +114,6 @@ typedef struct dspriteframe_s {
 	int			width;
 	int			height;
 } dspriteframe_t;
-
 typedef struct dspritegroup_s {
 	int			numframes;
 } dspritegroup_t;
@@ -126,6 +127,46 @@ typedef enum spriteframetype_e { SPR_SINGLE=0, SPR_GROUP } spriteframetype_t;
 typedef struct dspriteframetype_s {
 	spriteframetype_t	type;
 } dspriteframetype_t;
+
+// vortex: packed sprite
+typedef struct dpackedsprite_s
+{
+	int			ident;
+	int			version;
+	int			type;
+	float		boundingradius;
+	int			width;
+	int			height;
+	int			numframes;
+	float		beamlength;
+	synctype_t	synctype;
+	float       scalex;
+	float       scaley;
+} dpackedsprite_t;
+
+typedef struct dpackedspritecolormaps_s {
+	int			numcolormaps;
+} dpackedspritecolormaps_t;
+
+typedef struct dpackedspritetextures_s {
+	int			numtextures;
+} dpackedspritetextures_t;
+
+typedef struct dpackedspritetex_s {
+	int			width;
+	int			height;
+	int         colormapnum;
+} dpackedspritetex_t;
+
+typedef struct dpackedspriteframe_s {
+	int			origin[2];
+	int			width;
+	int			height;
+	int         texnum;
+	int         texposx;
+	int         texposy;
+} dpackedspriteframe_t;
+
 
 #endif
 

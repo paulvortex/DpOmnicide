@@ -182,7 +182,7 @@ rtexture_t *R_LoadTextureRenderBuffer(rtexturepool_t *rtexturepool, const char *
 rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filename, qboolean srgb, int flags, qboolean *hasalphaflag, float *avgcolor, int miplevel, qboolean optionaltexture);
 
 // saves a texture to a DDS file
-int R_SaveTextureDDSFile(rtexture_t *rt, const char *filename, qboolean skipuncompressed, qboolean hasalpha);
+int R_SaveTextureDDSFile(rtexture_t *rt, const char *filename, qboolean skipuncompressed, qboolean hasalpha, float *avgcolor);
 
 // free a texture
 void R_FreeTexture(rtexture_t *rt);

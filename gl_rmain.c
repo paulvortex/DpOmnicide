@@ -3500,9 +3500,9 @@ skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboole
 #ifndef USE_GLES2
 		//Con_Printf("Texture %s has average colors %f %f %f alpha %f\n", name, skinframe->avgcolor[0], skinframe->avgcolor[1], skinframe->avgcolor[2], skinframe->avgcolor[3]);
 		if (r_savedds && qglGetCompressedTexImageARB && skinframe->base)
-			R_SaveTextureDDSFile(skinframe->base, va(vabuf, sizeof(vabuf), "dds/%s.dds", skinframe->basename), r_texture_dds_save.integer < 2, skinframe->hasalpha);
+			R_SaveTextureDDSFile(skinframe->base, va(vabuf, sizeof(vabuf), "dds/%s.dds", skinframe->basename), r_texture_dds_save.integer < 2, skinframe->hasalpha, skinframe->avgcolor);
 		if (r_savedds && qglGetCompressedTexImageARB && skinframe->fog)
-			R_SaveTextureDDSFile(skinframe->fog, va(vabuf, sizeof(vabuf), "dds/%s_mask.dds", skinframe->basename), r_texture_dds_save.integer < 2, true);
+			R_SaveTextureDDSFile(skinframe->fog, va(vabuf, sizeof(vabuf), "dds/%s_mask.dds", skinframe->basename), r_texture_dds_save.integer < 2, true, NULL);
 #endif
 	}
 
@@ -3549,7 +3549,7 @@ skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboole
 			}
 	#ifndef USE_GLES2
 			if (r_savedds && qglGetCompressedTexImageARB && skinframe->nmap)
-				R_SaveTextureDDSFile(skinframe->nmap, va(vabuf, sizeof(vabuf), "dds/%s_norm.dds", skinframe->basename), r_texture_dds_save.integer < 2, true);
+				R_SaveTextureDDSFile(skinframe->nmap, va(vabuf, sizeof(vabuf), "dds/%s_norm.dds", skinframe->basename), r_texture_dds_save.integer < 2, true, NULL);
 	#endif
 		}
 
@@ -3561,7 +3561,7 @@ skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboole
 			skinframe->glow = R_LoadTexture2D (r_main_texturepool, va(vabuf, sizeof(vabuf), "%s_glow", skinframe->basename), image_width, image_height, pixels, vid.sRGB3D ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA, textureflags & (gl_texturecompression_glow.integer && gl_texturecompression.integer ? ~0 : ~TEXF_COMPRESS), mymiplevel, NULL);
 	#ifndef USE_GLES2
 			if (r_savedds && qglGetCompressedTexImageARB && skinframe->glow)
-				R_SaveTextureDDSFile(skinframe->glow, va(vabuf, sizeof(vabuf), "dds/%s_glow.dds", skinframe->basename), r_texture_dds_save.integer < 2, true);
+				R_SaveTextureDDSFile(skinframe->glow, va(vabuf, sizeof(vabuf), "dds/%s_glow.dds", skinframe->basename), r_texture_dds_save.integer < 2, true, NULL);
 	#endif
 			Mem_Free(pixels);pixels = NULL;
 		}
@@ -3572,7 +3572,7 @@ skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboole
 			skinframe->gloss = R_LoadTexture2D (r_main_texturepool, va(vabuf, sizeof(vabuf), "%s_gloss", skinframe->basename), image_width, image_height, pixels, vid.sRGB3D ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA, (TEXF_ALPHA | textureflags) & (gl_texturecompression_gloss.integer && gl_texturecompression.integer ? ~0 : ~TEXF_COMPRESS), mymiplevel, NULL);
 	#ifndef USE_GLES2
 			if (r_savedds && qglGetCompressedTexImageARB && skinframe->gloss)
-				R_SaveTextureDDSFile(skinframe->gloss, va(vabuf, sizeof(vabuf), "dds/%s_gloss.dds", skinframe->basename), r_texture_dds_save.integer < 2, true);
+				R_SaveTextureDDSFile(skinframe->gloss, va(vabuf, sizeof(vabuf), "dds/%s_gloss.dds", skinframe->basename), r_texture_dds_save.integer < 2, true, NULL);
 	#endif
 			Mem_Free(pixels);
 			pixels = NULL;
@@ -3584,7 +3584,7 @@ skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboole
 			skinframe->pants = R_LoadTexture2D (r_main_texturepool, va(vabuf, sizeof(vabuf), "%s_pants", skinframe->basename), image_width, image_height, pixels, vid.sRGB3D ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA, textureflags & (gl_texturecompression_color.integer && gl_texturecompression.integer ? ~0 : ~TEXF_COMPRESS), mymiplevel, NULL);
 	#ifndef USE_GLES2
 			if (r_savedds && qglGetCompressedTexImageARB && skinframe->pants)
-				R_SaveTextureDDSFile(skinframe->pants, va(vabuf, sizeof(vabuf), "dds/%s_pants.dds", skinframe->basename), r_texture_dds_save.integer < 2, false);
+				R_SaveTextureDDSFile(skinframe->pants, va(vabuf, sizeof(vabuf), "dds/%s_pants.dds", skinframe->basename), r_texture_dds_save.integer < 2, false, NULL);
 	#endif
 			Mem_Free(pixels);
 			pixels = NULL;
@@ -3596,7 +3596,7 @@ skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboole
 			skinframe->shirt = R_LoadTexture2D (r_main_texturepool, va(vabuf, sizeof(vabuf), "%s_shirt", skinframe->basename), image_width, image_height, pixels, vid.sRGB3D ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA, textureflags & (gl_texturecompression_color.integer && gl_texturecompression.integer ? ~0 : ~TEXF_COMPRESS), mymiplevel, NULL);
 	#ifndef USE_GLES2
 			if (r_savedds && qglGetCompressedTexImageARB && skinframe->shirt)
-				R_SaveTextureDDSFile(skinframe->shirt, va(vabuf, sizeof(vabuf), "dds/%s_shirt.dds", skinframe->basename), r_texture_dds_save.integer < 2, false);
+				R_SaveTextureDDSFile(skinframe->shirt, va(vabuf, sizeof(vabuf), "dds/%s_shirt.dds", skinframe->basename), r_texture_dds_save.integer < 2, false, NULL);
 	#endif
 			Mem_Free(pixels);
 			pixels = NULL;
@@ -3608,7 +3608,7 @@ skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboole
 			skinframe->reflect = R_LoadTexture2D (r_main_texturepool, va(vabuf, sizeof(vabuf), "%s_reflect", skinframe->basename), image_width, image_height, pixels, vid.sRGB3D ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA, textureflags & (gl_texturecompression_reflectmask.integer && gl_texturecompression.integer ? ~0 : ~TEXF_COMPRESS), mymiplevel, NULL);
 	#ifndef USE_GLES2
 			if (r_savedds && qglGetCompressedTexImageARB && skinframe->reflect)
-				R_SaveTextureDDSFile(skinframe->reflect, va(vabuf, sizeof(vabuf), "dds/%s_reflect.dds", skinframe->basename), r_texture_dds_save.integer < 2, true);
+				R_SaveTextureDDSFile(skinframe->reflect, va(vabuf, sizeof(vabuf), "dds/%s_reflect.dds", skinframe->basename), r_texture_dds_save.integer < 2, true, NULL);
 	#endif
 			Mem_Free(pixels);
 			pixels = NULL;

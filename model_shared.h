@@ -731,6 +731,10 @@ typedef struct model_sprite_s
 {
 	int				sprnum_type;
 	mspriteframe_t	*sprdata_frames;
+	// vortex: packed sprite data
+	float           *sprdata_framestexcoord2f;
+	float           sprscalex;
+	float           sprscaley;
 }
 model_sprite_t;
 

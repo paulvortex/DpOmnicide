@@ -34,7 +34,9 @@ SPRITE MODELS
 // FIXME: shorten these?
 typedef struct mspriteframe_s
 {
-	float	up, down, left, right;
+	float up, down, left, right;
+	int texnum;
+	float *texcoord2f;
 } mspriteframe_t;
 
 #endif

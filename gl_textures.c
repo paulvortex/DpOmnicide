@@ -38,6 +38,7 @@ cvar_t gl_texturecompression_reflectmask = {CVAR_SAVE, "gl_texturecompression_re
 cvar_t gl_texturecompression_sprites = {CVAR_SAVE, "gl_texturecompression_sprites", "1", "whether to compress sprites"};
 cvar_t gl_nopartialtextureupdates = {CVAR_SAVE, "gl_nopartialtextureupdates", "0", "use alternate path for dynamic lightmap updates that avoids a possibly slow code path in the driver"};
 cvar_t r_texture_dds_load_alphamode = {0, "r_texture_dds_load_alphamode", "1", "0: trust DDPF_ALPHAPIXELS flag, 1: texture format and brute force search if ambiguous, 2: texture format only"};
+cvar_t r_texture_dds_load_avgcolormode = {0, "r_texture_dds_load_avgcolormode", "1", "0: try to load from DDS reserved field, 1: generate average color data from texture"};
 cvar_t r_texture_dds_load_logfailure = {0, "r_texture_dds_load_logfailure", "0", "log missing DDS textures to ddstexturefailures.log, 0: done log, 1: log with no optional textures (_norm, glow etc.). 2: log all"};
 cvar_t r_texture_dds_swdecode = {0, "r_texture_dds_swdecode", "0", "0: don't software decode DDS, 1: software decode DDS if unsupported, 2: always software decode DDS"};
 
@@ -990,6 +991,7 @@ void R_Textures_Init (void)
 	Cvar_RegisterVariable (&gl_texturecompression_sprites);
 	Cvar_RegisterVariable (&gl_nopartialtextureupdates);
 	Cvar_RegisterVariable (&r_texture_dds_load_alphamode);
+	Cvar_RegisterVariable (&r_texture_dds_load_avgcolormode);
 	Cvar_RegisterVariable (&r_texture_dds_load_logfailure);
 	Cvar_RegisterVariable (&r_texture_dds_swdecode);
 
@@ -2061,7 +2063,7 @@ rtexture_t *R_LoadTextureRenderBuffer(rtexturepool_t *rtexturepool, const char *
 	return (rtexture_t *)glt;
 }
 
-int R_SaveTextureDDSFile(rtexture_t *rt, const char *filename, qboolean skipuncompressed, qboolean hasalpha)
+int R_SaveTextureDDSFile(rtexture_t *rt, const char *filename, qboolean skipuncompressed, qboolean hasalpha, float *avgcolor)
 {
 #ifdef USE_GLES2
 	return -1; // unsupported on this platform
@@ -2168,6 +2170,13 @@ int R_SaveTextureDDSFile(rtexture_t *rt, const char *filename, qboolean skipunco
 	StoreLittleLong(dds+80, dds_format_flags);
 	StoreLittleLong(dds+108, dds_caps1);
 	StoreLittleLong(dds+112, dds_caps2);
+	if (r_texture_dds_load_avgcolormode.integer == 0 && avgcolor) // store average color in reserved field
+	{
+		dds[40] = (unsigned char)min(255.0f, max(0.0f, avgcolor[0] * 255.0f));
+		dds[41] = (unsigned char)min(255.0f, max(0.0f, avgcolor[1] * 255.0f));
+		dds[42] = (unsigned char)min(255.0f, max(0.0f, avgcolor[2] * 255.0f));
+		dds[43] = hasalpha ? (unsigned char)min(255.0f, max(0.0f, avgcolor[3] * 255.0f)) : 255;
+	}
 	if (bytesperblock)
 	{
 		StoreLittleLong(dds+20, mipinfo[0][2]); // linear size
@@ -2662,51 +2671,63 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 	if (avgcolor)
 	{
 		float f;
-		Vector4Clear(avgcolor);
-		if (bytesperblock)
+		qboolean gencolor = true;
+		if (r_texture_dds_load_avgcolormode.integer == 0)
 		{
-			for (i = bytesperblock == 16 ? 8 : 0;i < mipsize;i += bytesperblock)
-			{
-				c = mippixels[i] + 256*mippixels[i+1] + 65536*mippixels[i+2] + 16777216*mippixels[i+3];
-				avgcolor[0] += ((c >> 11) & 0x1F) + ((c >> 27) & 0x1F);
-				avgcolor[1] += ((c >>  5) & 0x3F) + ((c >> 21) & 0x3F);
-				avgcolor[2] += ((c      ) & 0x1F) + ((c >> 16) & 0x1F);
-				if(textype == TEXTYPE_DXT5 || textype == TEXTYPE_DXT5_YCG2 || textype == TEXTYPE_DXT5_YCG4)
-					avgcolor[3] += (mippixels[i-8] + (int) mippixels[i-7]) * (0.5f / 255.0f);
-				else if(textype == TEXTYPE_DXT3)
-					avgcolor[3] += (
-						  (mippixels_start[i-8] & 0x0F)
-						+ (mippixels_start[i-8] >> 4)
-						+ (mippixels_start[i-7] & 0x0F)
-						+ (mippixels_start[i-7] >> 4)
-						+ (mippixels_start[i-6] & 0x0F)
-						+ (mippixels_start[i-6] >> 4)
-						+ (mippixels_start[i-5] & 0x0F)
-						+ (mippixels_start[i-5] >> 4)
-					       ) * (0.125f / 15.0f);
-				else
-					avgcolor[3] += 1.0f;
-			}
-			f = (float)bytesperblock / mipsize;
-			avgcolor[0] *= (0.5f / 31.0f) * f;
-			avgcolor[1] *= (0.5f / 63.0f) * f;
-			avgcolor[2] *= (0.5f / 31.0f) * f;
-			avgcolor[3] *= f;
+			avgcolor[0] = (float)(dds[40] / 255.0f);
+			avgcolor[1] = (float)(dds[41] / 255.0f);
+			avgcolor[2] = (float)(dds[42] / 255.0f);
+			avgcolor[3] = (float)(dds[43] / 255.0f);
+			gencolor = false;
 		}
-		else
+		if (gencolor)
 		{
-			for (i = 0;i < mipsize;i += 4)
+			Vector4Clear(avgcolor);
+			if (bytesperblock)
 			{
-				avgcolor[0] += mippixels[i+2];
-				avgcolor[1] += mippixels[i+1];
-				avgcolor[2] += mippixels[i];
-				avgcolor[3] += mippixels[i+3];
+				for (i = bytesperblock == 16 ? 8 : 0;i < mipsize;i += bytesperblock)
+				{
+					c = mippixels[i] + 256*mippixels[i+1] + 65536*mippixels[i+2] + 16777216*mippixels[i+3];
+					avgcolor[0] += ((c >> 11) & 0x1F) + ((c >> 27) & 0x1F);
+					avgcolor[1] += ((c >>  5) & 0x3F) + ((c >> 21) & 0x3F);
+					avgcolor[2] += ((c      ) & 0x1F) + ((c >> 16) & 0x1F);
+					if(textype == TEXTYPE_DXT5 || textype == TEXTYPE_DXT5_YCG2 || textype == TEXTYPE_DXT5_YCG4)
+						avgcolor[3] += (mippixels[i-8] + (int) mippixels[i-7]) * (0.5f / 255.0f);
+					else if(textype == TEXTYPE_DXT3)
+						avgcolor[3] += (
+							  (mippixels_start[i-8] & 0x0F)
+							+ (mippixels_start[i-8] >> 4)
+							+ (mippixels_start[i-7] & 0x0F)
+							+ (mippixels_start[i-7] >> 4)
+							+ (mippixels_start[i-6] & 0x0F)
+							+ (mippixels_start[i-6] >> 4)
+							+ (mippixels_start[i-5] & 0x0F)
+							+ (mippixels_start[i-5] >> 4)
+							   ) * (0.125f / 15.0f);
+					else
+						avgcolor[3] += 1.0f;
+				}
+				f = (float)bytesperblock / mipsize;
+				avgcolor[0] *= (0.5f / 31.0f) * f;
+				avgcolor[1] *= (0.5f / 63.0f) * f;
+				avgcolor[2] *= (0.5f / 31.0f) * f;
+				avgcolor[3] *= f;
 			}
-			f = (1.0f / 255.0f) * bytesperpixel / mipsize;
-			avgcolor[0] *= f;
-			avgcolor[1] *= f;
-			avgcolor[2] *= f;
-			avgcolor[3] *= f;
+			else
+			{
+				for (i = 0;i < mipsize;i += 4)
+				{
+					avgcolor[0] += mippixels[i+2];
+					avgcolor[1] += mippixels[i+1];
+					avgcolor[2] += mippixels[i];
+					avgcolor[3] += mippixels[i+3];
+				}
+				f = (1.0f / 255.0f) * bytesperpixel / mipsize;
+				avgcolor[0] *= f;
+				avgcolor[1] *= f;
+				avgcolor[2] *= f;
+				avgcolor[3] *= f;
+			}
 		}
 	}
 

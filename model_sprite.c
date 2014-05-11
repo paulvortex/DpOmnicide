@@ -86,6 +86,7 @@ static void Mod_SpriteSetupTexture(texture_t *texture, skinframe_t *skinframe, q
 }
 
 extern cvar_t gl_texturecompression_sprites;
+static float spritetexcoord2f[4*2] = {0, 1, 0, 0, 1, 0, 1, 1};
 
 static void Mod_Sprite_SharedSetup(const unsigned char *datapointer, int version, const unsigned int *palette, qboolean additive)
 {
@@ -197,7 +198,8 @@ static void Mod_Sprite_SharedSetup(const unsigned char *datapointer, int version
 			loadmodel->sprite.sprdata_frames[realframes].right = origin[0] + width;
 			loadmodel->sprite.sprdata_frames[realframes].up = origin[1];
 			loadmodel->sprite.sprdata_frames[realframes].down = origin[1] - height;
-
+			loadmodel->sprite.sprdata_frames[realframes].texnum = realframes;
+			loadmodel->sprite.sprdata_frames[realframes].texcoord2f = spritetexcoord2f;
 			x = (int)max(loadmodel->sprite.sprdata_frames[realframes].left * loadmodel->sprite.sprdata_frames[realframes].left, loadmodel->sprite.sprdata_frames[realframes].right * loadmodel->sprite.sprdata_frames[realframes].right);
 			y = (int)max(loadmodel->sprite.sprdata_frames[realframes].up * loadmodel->sprite.sprdata_frames[realframes].up, loadmodel->sprite.sprdata_frames[realframes].down * loadmodel->sprite.sprdata_frames[realframes].down);
 			if (modelradius < x + y)
@@ -262,6 +264,211 @@ static void Mod_Sprite_SharedSetup(const unsigned char *datapointer, int version
 	loadmodel->radius2 = modelradius * modelradius;
 }
 
+static void Mod_Sprite_SetupPackedSprite(const unsigned char *datapointer, int version)
+{
+	int					i, j, groupframes, realframes, x, y, origin[2], width, height;
+	qboolean			fullbright;
+	dspriteframetype_t	*pinframetype;
+	dpackedspritecolormaps_t *pincolormaps;
+	dpackedspritetextures_t *pintextures;
+	dpackedspriteframe_t *pinframe;
+	dpackedspritetex_t  *pintex;
+	dspritegroup_t		*pingroup;
+	dspriteinterval_t	*pinintervals;
+	skinframe_t			*skinframe;
+	float				modelradius, interval, *texcoord2f, texposx, texposy, texwidth, texheight;
+	char				name[MAX_QPATH], fogname[MAX_QPATH];
+	const void			*startframes;
+	const unsigned int  *startcolormaps;
+	int                 texflags = (r_mipsprites.integer ? TEXF_MIPMAP : 0) | ((gl_texturecompression.integer && gl_texturecompression_sprites.integer) ? TEXF_COMPRESS : 0) | TEXF_ISSPRITE | TEXF_PICMIP | TEXF_ALPHA | TEXF_CLAMP;
+	int                 numinternalcolormaps, colormapnum, texnum, *texturedimensions;
+	modelradius = 0;
+
+	if (loadmodel->numframes < 1)
+		Host_Error ("Mod_Sprite_SetupPackedSprite: Invalid # of frames: %d", loadmodel->numframes);
+
+	// hack to allow sprites to be non-fullbright
+	fullbright = true;
+	for (i = 0;i < MAX_QPATH && loadmodel->name[i];i++)
+		if (loadmodel->name[i] == '!')
+			fullbright = false;
+
+	// load internal colormaps
+	pincolormaps = (dpackedspritecolormaps_t *)datapointer;
+	numinternalcolormaps = LittleLong(pincolormaps->numcolormaps);
+	datapointer += sizeof(dpackedspritecolormaps_t);
+	startcolormaps = (unsigned int *)datapointer;
+	datapointer += numinternalcolormaps * 1024;
+
+	// load atlas textures
+	pintextures = (dpackedspritetextures_t *)datapointer;
+	loadmodel->num_textures = LittleLong(pintextures->numtextures);
+	loadmodel->num_texturesperskin = 1;
+	datapointer += sizeof(dpackedspritetextures_t);
+	if (loadmodel->num_textures < 1)
+		Host_Error ("Mod_Sprite_SetupPackedSprite: Invalid # of atlas textures: %d", loadmodel->num_textures);
+	loadmodel->data_textures = (texture_t *)Mem_Alloc(loadmodel->mempool, sizeof(texture_t) * loadmodel->num_textures);
+	texturedimensions = (int *)Mem_Alloc(loadmodel->mempool, sizeof(int) * 2 * loadmodel->num_textures);
+	for (i = 0;i < loadmodel->num_textures;i++)
+	{
+		pintex = (dpackedspritetex_t *)datapointer;
+		width = LittleLong (pintex->width);
+		height = LittleLong (pintex->height);
+		colormapnum = LittleLong (pintex->colormapnum);
+		datapointer += sizeof(dpackedspritetex_t);
+		texturedimensions[i * 2] = width; // we need dimensions later to calc texcoords
+		texturedimensions[i * 2 + 1] = height;
+		if (cls.state != ca_dedicated)
+		{
+			skinframe = NULL;
+			dpsnprintf (name, sizeof(name), "%s_%i", loadmodel->name, i);
+			dpsnprintf (fogname, sizeof(fogname), "%s_%ifog", loadmodel->name, i);
+			if (!(skinframe = R_SkinFrame_LoadExternal(name, texflags | TEXF_COMPRESS, true, false)))
+			{
+				unsigned char *pixels = (unsigned char *) Mem_Alloc(loadmodel->mempool, width*height*4);
+				if (version == SPRITEPACKED32_VERSION)
+				{
+					for (x = 0;x < width*height;x++)
+					{
+						pixels[x*4+2] = datapointer[x*4+0];
+						pixels[x*4+1] = datapointer[x*4+1];
+						pixels[x*4+0] = datapointer[x*4+2];
+						pixels[x*4+3] = datapointer[x*4+3];
+					}
+				}
+				else // SPRITEPACKED_VERSION
+					Image_Copy8bitBGRA(datapointer, pixels, width*height, (colormapnum >= 0) ? (startcolormaps + colormapnum*256) : palette_bgra_transparent);
+				skinframe = R_SkinFrame_LoadInternalBGRA(name, texflags, pixels, width, height, false);
+				Mem_Free(pixels);
+			}
+			if (skinframe == NULL)
+				skinframe = R_SkinFrame_LoadMissing();
+			Mod_SpriteSetupTexture(&loadmodel->data_textures[i], skinframe, fullbright, false);
+		}
+		if (version == SPRITEPACKED32_VERSION)
+			datapointer += width*height*4;
+		else
+			datapointer += width*height;
+	}
+
+	// allocate frames
+	startframes = datapointer;
+	realframes = 0;
+	for (i = 0;i < loadmodel->numframes;i++)
+	{
+		pinframetype = (dspriteframetype_t *)datapointer;
+		datapointer += sizeof(dspriteframetype_t);
+		if (LittleLong (pinframetype->type) == SPR_SINGLE)
+			groupframes = 1;
+		else
+		{
+			pingroup = (dspritegroup_t *)datapointer;
+			datapointer += sizeof(dspritegroup_t);
+			groupframes = LittleLong(pingroup->numframes);
+			datapointer += sizeof(dspriteinterval_t) * groupframes;
+		}
+		for (j = 0;j < groupframes;j++)
+		{
+			pinframe = (dpackedspriteframe_t *)datapointer;
+			if (version == SPRITEPACKED32_VERSION)
+				datapointer += sizeof(dpackedspriteframe_t);
+			else // SPRITEPACKED_VERSION
+				datapointer += sizeof(dpackedspriteframe_t);
+		}
+		realframes += groupframes;
+	}
+	if (realframes > 32768)
+		Host_Error("Mod_Sprite_SetupPackedSprite: too many real frames");
+	loadmodel->animscenes = (animscene_t *)Mem_Alloc(loadmodel->mempool, sizeof(animscene_t) * loadmodel->numframes);
+	loadmodel->sprite.sprdata_frames = (mspriteframe_t *)Mem_Alloc(loadmodel->mempool, sizeof(mspriteframe_t) * realframes);
+	loadmodel->sprite.sprdata_framestexcoord2f = (float *)Mem_Alloc(loadmodel->mempool, sizeof(float[4*2]) * realframes);
+	
+	// load frames
+	datapointer = (unsigned char *)startframes;
+	realframes = 0;
+	for (i = 0;i < loadmodel->numframes;i++)
+	{
+		pinframetype = (dspriteframetype_t *)datapointer;
+		datapointer += sizeof(dspriteframetype_t);
+
+		if (LittleLong (pinframetype->type) == SPR_SINGLE)
+		{
+			groupframes = 1;
+			interval = 0.1f;
+		}
+		else
+		{
+			pingroup = (dspritegroup_t *)datapointer;
+			datapointer += sizeof(dspritegroup_t);
+			groupframes = LittleLong(pingroup->numframes);
+			pinintervals = (dspriteinterval_t *)datapointer;
+			datapointer += sizeof(dspriteinterval_t) * groupframes;
+			interval = LittleFloat(pinintervals[0].interval);
+			if (interval < 0.01f)
+				Host_Error("Mod_Sprite_SharedSetup: invalid interval");
+		}
+
+		dpsnprintf(loadmodel->animscenes[i].name, sizeof(loadmodel->animscenes[i].name), "frame %i", i);
+		loadmodel->animscenes[i].firstframe = realframes;
+		loadmodel->animscenes[i].framecount = groupframes;
+		loadmodel->animscenes[i].framerate = 1.0f / interval;
+		loadmodel->animscenes[i].loop = true;
+
+		for (j = 0;j < groupframes;j++)
+		{
+			pinframe = (dpackedspriteframe_t *)datapointer;
+			datapointer += sizeof(dpackedspriteframe_t);
+
+			origin[0] = LittleLong (pinframe->origin[0]);
+			origin[1] = LittleLong (pinframe->origin[1]);
+			width = LittleLong (pinframe->width);
+			height = LittleLong (pinframe->height);
+			texnum = LittleLong (pinframe->texnum); 
+			texposx = LittleLong (pinframe->texposx); 
+			texposy = LittleLong (pinframe->texposy); 
+			if (texnum < 0 || texnum >= loadmodel->num_textures)
+				Host_Error("Mod_Sprite_SharedSetup: bogus frame texture num");
+
+			loadmodel->sprite.sprdata_frames[realframes].left = origin[0];
+			loadmodel->sprite.sprdata_frames[realframes].right = origin[0] + width;
+			loadmodel->sprite.sprdata_frames[realframes].up = origin[1];
+			loadmodel->sprite.sprdata_frames[realframes].down = origin[1] - height;
+			loadmodel->sprite.sprdata_frames[realframes].texnum = texnum;
+			
+			// calc texture coordinates
+			texcoord2f = loadmodel->sprite.sprdata_framestexcoord2f + realframes*4*2; 
+			texwidth = texturedimensions[texnum * 2];
+			texheight = texturedimensions[texnum * 2 + 1];
+			texcoord2f[0] = texcoord2f[2] = texposx / texwidth;
+			texcoord2f[1] = texcoord2f[7] = (texposy + height) / texheight;
+			texcoord2f[3] = texcoord2f[5] = texposy / texheight;
+			texcoord2f[4] = texcoord2f[6] = (texposx + width) / texwidth;
+			loadmodel->sprite.sprdata_frames[realframes].texcoord2f = texcoord2f;
+
+			// calc modelradius
+			x = (int)max(loadmodel->sprite.sprdata_frames[realframes].left * loadmodel->sprite.sprdata_frames[realframes].left, loadmodel->sprite.sprdata_frames[realframes].right * loadmodel->sprite.sprdata_frames[realframes].right)*loadmodel->sprite.sprscalex;
+			y = (int)max(loadmodel->sprite.sprdata_frames[realframes].up * loadmodel->sprite.sprdata_frames[realframes].up, loadmodel->sprite.sprdata_frames[realframes].down * loadmodel->sprite.sprdata_frames[realframes].down)*loadmodel->sprite.sprscaley;
+			if (modelradius < (x + y))
+				modelradius = x + y;
+
+			realframes++;
+		}
+	}
+
+	// set model radius
+	modelradius = sqrt(modelradius);
+	for (i = 0;i < 3;i++)
+	{
+		loadmodel->normalmins[i] = loadmodel->yawmins[i] = loadmodel->rotatedmins[i] = -modelradius;
+		loadmodel->normalmaxs[i] = loadmodel->yawmaxs[i] = loadmodel->rotatedmaxs[i] = modelradius;
+	}
+	loadmodel->radius = modelradius;
+	loadmodel->radius2 = modelradius * modelradius;
+
+	// clean up temp data
+	Mem_Free(texturedimensions);
+}
+
 void Mod_IDSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 {
 	int version;
@@ -294,6 +501,24 @@ void Mod_IDSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		loadmodel->synctype = (synctype_t)LittleLong (pinqsprite->synctype);
 
 		Mod_Sprite_SharedSetup(datapointer, LittleLong (pinqsprite->version), NULL, false);
+	}
+	else if (version == SPRITEPACKED_VERSION || version == SPRITEPACKED32_VERSION)
+	{
+		dpackedsprite_t *pinqsprite;
+
+		pinqsprite = (dpackedsprite_t *)datapointer;
+		datapointer += sizeof(dpackedsprite_t);
+
+		loadmodel->numframes = LittleLong (pinqsprite->numframes);
+		loadmodel->sprite.sprnum_type = LittleLong (pinqsprite->type);
+		loadmodel->synctype = (synctype_t)LittleLong (pinqsprite->synctype);
+		loadmodel->sprite.sprscalex = LittleFloat(pinqsprite->scalex);
+		if (loadmodel->sprite.sprscalex == 0)
+			loadmodel->sprite.sprscalex = 1;
+		loadmodel->sprite.sprscaley = LittleFloat(pinqsprite->scaley);
+		if (loadmodel->sprite.sprscaley == 0)
+			loadmodel->sprite.sprscaley = 1;
+		Mod_Sprite_SetupPackedSprite(datapointer, LittleLong (pinqsprite->version));
 	}
 	else if (version == SPRITEHL_VERSION)
 	{
@@ -367,8 +592,8 @@ void Mod_IDSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		Mod_Sprite_SharedSetup(datapointer, LittleLong (pinhlsprite->version), (unsigned int *)(&palette[0][0]), rendermode == SPRHL_ADDITIVE);
 	}
 	else
-		Host_Error("Mod_IDSP_Load: %s has wrong version number (%i). Only %i (quake), %i (HalfLife), and %i (sprite32) supported",
-					loadmodel->name, version, SPRITE_VERSION, SPRITEHL_VERSION, SPRITE32_VERSION);
+		Host_Error("Mod_IDSP_Load: %s has wrong version number (%i). Only %i (quake), %i (HalfLife), %i (sprite32) and %i/%i (BloodOmnicide packed 8/32-bit sprite) supported",
+					loadmodel->name, version, SPRITE_VERSION, SPRITEHL_VERSION, SPRITE32_VERSION, SPRITEPACKED_VERSION, SPRITEPACKED32_VERSION );
 
 	loadmodel->surfmesh.isanimated = loadmodel->numframes > 1 || (loadmodel->animscenes && loadmodel->animscenes[0].framecount > 1);
 }
@@ -447,6 +672,8 @@ void Mod_IDS2_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		sprframe->right = -origin[0] + width;
 		sprframe->up = origin[1];
 		sprframe->down = origin[1] - height;
+		sprframe->texnum = i;
+		sprframe->texcoord2f = spritetexcoord2f;
 
 		x = (int)max(sprframe->left * sprframe->left, sprframe->right * sprframe->right);
 		y = (int)max(sprframe->up * sprframe->up, sprframe->down * sprframe->down);

@@ -430,7 +430,7 @@ reload:
 			pic->tex = R_LoadTexture2D(drawtexturepool, pic->name, image_width, image_height, pixels, vid.sRGB2D ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA, pic->texflags & (pic->hasalpha ? ~0 : ~TEXF_ALPHA), -1, NULL);
 #ifndef USE_GLES2
 			if (r_texture_dds_save.integer && qglGetCompressedTexImageARB && pic->tex)
-				R_SaveTextureDDSFile(pic->tex, va(vabuf, sizeof(vabuf), "dds/%s.dds", pic->name), r_texture_dds_save.integer < 2, pic->hasalpha);
+				R_SaveTextureDDSFile(pic->tex, va(vabuf, sizeof(vabuf), "dds/%s.dds", pic->name), r_texture_dds_save.integer < 2, pic->hasalpha, NULL);
 #endif
 		}
 	}
@@ -532,7 +532,7 @@ rtexture_t *Draw_GetPicTexture(cachepic_t *pic)
 			pic->tex = loadtextureimage(drawtexturepool, pic->name, false, pic->texflags, true, vid.sRGB2D);
 #ifndef USE_GLES2
 			if (r_texture_dds_save.integer && qglGetCompressedTexImageARB && pic->tex)
-				R_SaveTextureDDSFile(pic->tex, va(vabuf, sizeof(vabuf), "dds/%s.dds", pic->name), r_texture_dds_save.integer < 2, pic->hasalpha);
+				R_SaveTextureDDSFile(pic->tex, va(vabuf, sizeof(vabuf), "dds/%s.dds", pic->name), r_texture_dds_save.integer < 2, pic->hasalpha, NULL);
 #endif
 		}
 		if (pic->tex == NULL && !strncmp(pic->name, "gfx/", 4))
@@ -540,7 +540,7 @@ rtexture_t *Draw_GetPicTexture(cachepic_t *pic)
 			pic->tex = loadtextureimage(drawtexturepool, pic->name+4, false, pic->texflags, true, vid.sRGB2D);
 #ifndef USE_GLES2
 			if (r_texture_dds_save.integer && qglGetCompressedTexImageARB && pic->tex)
-				R_SaveTextureDDSFile(pic->tex, va(vabuf, sizeof(vabuf), "dds/%s.dds", pic->name), r_texture_dds_save.integer < 2, pic->hasalpha);
+				R_SaveTextureDDSFile(pic->tex, va(vabuf, sizeof(vabuf), "dds/%s.dds", pic->name), r_texture_dds_save.integer < 2, pic->hasalpha, NULL);
 #endif
 		}
 		if (pic->tex == NULL)
