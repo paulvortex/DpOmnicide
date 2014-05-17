@@ -163,3 +163,10 @@ pip-log.txt
 .DS_Store
 /Release-darkplaces-sdl-dev
 /Release-darkplaces-sdl
+Debug-darkplaces-sdl-dev/BuildLog.htm
+Debug-darkplaces-sdl-dev/darkplaces.res
+Debug-darkplaces-sdl-dev/mt.dep
+Debug-darkplaces-sdl-dev/omnicide-dev.exe.embed.manifest
+Debug-darkplaces-sdl-dev/omnicide-dev.exe.embed.manifest.res
+Debug-darkplaces-sdl-dev/omnicide-dev.exe.intermediate.manifest
+Debug-darkplaces-sdl-dev/vc90.idb
