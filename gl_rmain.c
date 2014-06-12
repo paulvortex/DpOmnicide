@@ -3428,7 +3428,7 @@ skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboole
 	Image_StripImageExtension(name, basename, sizeof(basename));
 
 	// check for DDS texture file first
-	if (!r_loaddds || !(ddsbase = R_LoadTextureDDSFile(r_main_texturepool, va(vabuf, sizeof(vabuf), "dds/%s.dds", basename), vid.sRGB3D, textureflags, &ddshasalpha, ddsavgcolor, miplevel, false)))
+	if (!r_loaddds || !(ddsbase = R_LoadTextureDDSFile(r_main_texturepool, basename, NULL, vid.sRGB3D, textureflags, &ddshasalpha, ddsavgcolor, miplevel, false)))
 	{
 		basepixels = loadimagepixelsbgra(name, complain, true, false, &miplevel);
 		if (basepixels == NULL)
@@ -3463,7 +3463,7 @@ skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboole
 		skinframe->hasalpha = ddshasalpha;
 		VectorCopy(ddsavgcolor, skinframe->avgcolor);
 		if (r_loadfog && skinframe->hasalpha)
-			skinframe->fog = R_LoadTextureDDSFile(r_main_texturepool, va(vabuf, sizeof(vabuf), "dds/%s_mask.dds", skinframe->basename), false, textureflags | TEXF_ALPHA, NULL, NULL, miplevel, true);
+			skinframe->fog = R_LoadTextureDDSFile(r_main_texturepool, skinframe->basename, "_mask", false, textureflags | TEXF_ALPHA, NULL, NULL, miplevel, true);
 		//Con_Printf("Texture %s has average colors %f %f %f alpha %f\n", name, skinframe->avgcolor[0], skinframe->avgcolor[1], skinframe->avgcolor[2], skinframe->avgcolor[3]);
 	}
 	else
@@ -3513,13 +3513,13 @@ skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboole
 		{
 			mymiplevel = savemiplevel;
 			if (r_loadnormalmap)
-				skinframe->nmap = R_LoadTextureDDSFile(r_main_texturepool, va(vabuf, sizeof(vabuf), "dds/%s_norm.dds", skinframe->basename), false, (TEXF_ALPHA | textureflags) & (r_mipnormalmaps.integer ? ~0 : ~TEXF_MIPMAP), NULL, NULL, mymiplevel, true);
-			skinframe->glow = R_LoadTextureDDSFile(r_main_texturepool, va(vabuf, sizeof(vabuf), "dds/%s_glow.dds", skinframe->basename), vid.sRGB3D, textureflags, NULL, NULL, mymiplevel, true);
+				skinframe->nmap = R_LoadTextureDDSFile(r_main_texturepool, skinframe->basename, "_norm", false, (TEXF_ALPHA | textureflags) & (r_mipnormalmaps.integer ? ~0 : ~TEXF_MIPMAP), NULL, NULL, mymiplevel, true);
+			skinframe->glow = R_LoadTextureDDSFile(r_main_texturepool, skinframe->basename, "_glow", vid.sRGB3D, textureflags, NULL, NULL, mymiplevel, true);
 			if (r_loadgloss)
-				skinframe->gloss = R_LoadTextureDDSFile(r_main_texturepool, va(vabuf, sizeof(vabuf), "dds/%s_gloss.dds", skinframe->basename), vid.sRGB3D, textureflags, NULL, NULL, mymiplevel, true);
-			skinframe->pants = R_LoadTextureDDSFile(r_main_texturepool, va(vabuf, sizeof(vabuf), "dds/%s_pants.dds", skinframe->basename), vid.sRGB3D, textureflags, NULL, NULL, mymiplevel, true);
-			skinframe->shirt = R_LoadTextureDDSFile(r_main_texturepool, va(vabuf, sizeof(vabuf), "dds/%s_shirt.dds", skinframe->basename), vid.sRGB3D, textureflags, NULL, NULL, mymiplevel, true);
-			skinframe->reflect = R_LoadTextureDDSFile(r_main_texturepool, va(vabuf, sizeof(vabuf), "dds/%s_reflect.dds", skinframe->basename), vid.sRGB3D, textureflags, NULL, NULL, mymiplevel, true);
+				skinframe->gloss = R_LoadTextureDDSFile(r_main_texturepool, skinframe->basename, "_gloss", vid.sRGB3D, textureflags, NULL, NULL, mymiplevel, true);
+			skinframe->pants = R_LoadTextureDDSFile(r_main_texturepool, skinframe->basename, "_pants", vid.sRGB3D, textureflags, NULL, NULL, mymiplevel, true);
+			skinframe->shirt = R_LoadTextureDDSFile(r_main_texturepool, skinframe->basename, "_shirt", vid.sRGB3D, textureflags, NULL, NULL, mymiplevel, true);
+			skinframe->reflect = R_LoadTextureDDSFile(r_main_texturepool, skinframe->basename, "_reflect", vid.sRGB3D, textureflags, NULL, NULL, mymiplevel, true);
 		}
 
 		// _norm is the name used by tenebrae and has been adopted as standard

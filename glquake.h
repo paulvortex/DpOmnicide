@@ -238,6 +238,10 @@ typedef ptrdiff_t GLsizeiptrARB;
 #define GL_ALPHA				0x1906
 #define GL_RGB					0x1907
 #define GL_RGBA					0x1908
+#define GL_RED                  0x1903
+#define GL_GREEN                0x1904
+#define GL_BLUE                 0x1905
+#define GL_RG                   0x8227 // GL_ARB_texture_rg
 
 #define GL_MAX_TEXTURE_SIZE			0x0D33
 
@@ -1052,6 +1056,20 @@ extern void (GLAPIENTRY *qglGetCompressedTexImageARB)(GLenum target, GLint lod, 
 #define GL_COMPRESSED_RGBA_S3TC_DXT1_EXT                  0x83F1
 #define GL_COMPRESSED_RGBA_S3TC_DXT3_EXT                  0x83F2
 #define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT                  0x83F3
+#endif
+
+// GL_ARB_ES3_compatibility
+#ifndef GL_COMPRESSED_RGB8_ETC2
+#define GL_COMPRESSED_RGB8_ETC2                        0x9274
+#define GL_COMPRESSED_SRGB8_ETC2                       0x9275
+#define GL_COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2    0x9276
+#define GL_COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2   0x9277
+#define GL_COMPRESSED_RGBA8_ETC2_EAC                   0x9278
+#define GL_COMPRESSED_SRGB8_ALPHA8_ETC2_EAC            0x9279
+#define GL_COMPRESSED_R11_EAC                          0x9270
+#define GL_COMPRESSED_SIGNED_R11_EAC                   0x9271
+#define GL_COMPRESSED_RG11_EAC                         0x9272
+#define GL_COMPRESSED_SIGNED_RG11_EAC                  0x9273
 #endif
 
 // GL_ARB_occlusion_query

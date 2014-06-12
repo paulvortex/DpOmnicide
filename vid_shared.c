@@ -1095,6 +1095,7 @@ void VID_CheckExtensions(void)
 	vid.support.ext_texture_filter_anisotropic = GL_CheckExtension("GL_EXT_texture_filter_anisotropic", NULL, "-noanisotropy", false);
 	vid.support.ext_texture_srgb = GL_CheckExtension("GL_EXT_texture_sRGB", NULL, "-nosrgb", false);
 	vid.support.arb_multisample = GL_CheckExtension("GL_ARB_multisample", multisamplefuncs, "-nomultisample", false);
+	vid.support.arb_es3_compatibility = GL_CheckExtension("GL_ARB_ES3_compatibility", NULL, "-noes3", false);
 	vid.allowalphatocoverage = false;
 
 // COMMANDLINEOPTION: GL: -noshaders disables use of OpenGL 2.0 shaders (which allow pixel shader effects, can improve per pixel lighting performance and capabilities)
@@ -1122,6 +1123,7 @@ void VID_CheckExtensions(void)
 // COMMANDLINEOPTION: GL: -novbo disables GL_ARB_vertex_buffer_object (which accelerates rendering)
 // COMMANDLINEOPTION: GL: -nosrgb disables GL_EXT_texture_sRGB (which is used for higher quality non-linear texture gamma)
 // COMMANDLINEOPTION: GL: -nomultisample disables GL_ARB_multisample
+// COMMANDLINEOPTION: GL: -noes3 disables GL_ARB_ES3_compatibility (used for ETC2/EAC compression)
 
 	if (vid.support.arb_draw_buffers)
 		qglGetIntegerv(GL_MAX_DRAW_BUFFERS_ARB, (GLint*)&vid.maxdrawbuffers);

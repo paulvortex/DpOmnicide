@@ -63,6 +63,23 @@ typedef enum textype_e
 	// default compressed type for GLES2
 	TEXTYPE_ETC1,
 
+	// OpenGL 4.3 / OpenGL ES 3 ETC2 / EAC texture compression 
+	// 4x4 block compressed 15bit color (4 bits per pixel)
+	TEXTYPE_ETC2RGB,
+	// 4x4 block compressed 15bit color plus 1bit alpha (4 bits per pixel)
+	TEXTYPE_ETC2RGBA1,
+	// 4x4 block compressed 15bit color plus 8-bit alpha (8 bits per pixel)
+	TEXTYPE_ETC2RGBA,
+	// 8 bit red using alpha compression technique (4 bits per pixel)
+	TEXTYPE_ETC2R,
+	// 8 bit red/green using alpha compression technique (8 bits per pixel)
+	TEXTYPE_ETC2RG,
+	// sRGB colorspace variants of the above
+	TEXTYPE_SRGB_ETC2RGB,
+	TEXTYPE_SRGB_ETC2RGBA1,
+	TEXTYPE_SRGB_ETC2RGBA,
+
+	// sRGB textures
 	// 8bit paletted in sRGB colorspace
 	TEXTYPE_SRGB_PALETTE,
 	// 32bit RGBA in sRGB colorspace
@@ -179,7 +196,7 @@ rtexture_t *R_LoadTexture3D(rtexturepool_t *rtexturepool, const char *identifier
 rtexture_t *R_LoadTextureCubeMap(rtexturepool_t *rtexturepool, const char *identifier, int width, const unsigned char *data, textype_t textype, int flags, int miplevel, const unsigned int *palette);
 rtexture_t *R_LoadTextureShadowMap2D(rtexturepool_t *rtexturepool, const char *identifier, int width, int height, textype_t textype, qboolean filter);
 rtexture_t *R_LoadTextureRenderBuffer(rtexturepool_t *rtexturepool, const char *identifier, int width, int height, textype_t textype);
-rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filename, qboolean srgb, int flags, qboolean *hasalphaflag, float *avgcolor, int miplevel, qboolean optionaltexture);
+rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *basename, const char *suffix, qboolean convert_srgb, int flags, qboolean *hasalphaflag, float *avgcolor, int miplevel, qboolean optionaltexture);
 
 // saves a texture to a DDS file
 int R_SaveTextureDDSFile(rtexture_t *rt, const char *filename, qboolean skipuncompressed, qboolean hasalpha, float *avgcolor);

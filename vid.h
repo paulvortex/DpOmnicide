@@ -75,6 +75,7 @@ typedef struct viddef_support_s
 	qboolean ext_texture_filter_anisotropic;
 	qboolean ext_texture_srgb;
 	qboolean arb_multisample;
+	qboolean arb_es3_compatibility;
 }
 viddef_support_t;
 
