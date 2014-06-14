@@ -1095,7 +1095,29 @@ void VID_CheckExtensions(void)
 	vid.support.ext_texture_filter_anisotropic = GL_CheckExtension("GL_EXT_texture_filter_anisotropic", NULL, "-noanisotropy", false);
 	vid.support.ext_texture_srgb = GL_CheckExtension("GL_EXT_texture_sRGB", NULL, "-nosrgb", false);
 	vid.support.arb_multisample = GL_CheckExtension("GL_ARB_multisample", multisamplefuncs, "-nomultisample", false);
+	vid.support.oes_compressed_etc1_rgb8_texture = GL_CheckExtension("OES_compressed_ETC1_RGB8_texture", NULL, "-noetc1", false);
 	vid.support.arb_es3_compatibility = GL_CheckExtension("GL_ARB_ES3_compatibility", NULL, "-noes3", false);
+	if (vid.support.arb_es3_compatibility)
+	{
+		vid.support.oes_compressed_etc2_rgb8_texture = true;
+		vid.support.oes_compressed_etc2_punchthrougha_rgba8_texture = true;
+		vid.support.oes_compressed_etc2_rgba8_texture = true;
+		vid.support.oes_compressed_etc2_srgb8_texture = true;
+		vid.support.oes_compressed_etc2_punchthrougha_srgb8_alpha_texture = true;
+		vid.support.oes_compressed_etc2_srgb8_alpha8_texture = true;
+		vid.support.arb_es3_compatibility_etc2_partial = true;
+	}
+	else
+	{
+		// detect per-texture ETC2 support
+		vid.support.oes_compressed_etc2_rgb8_texture = GL_CheckExtension("OES_compressed_ETC2_RGB8_texture", NULL, "-noetc2rgb", false);
+		vid.support.oes_compressed_etc2_punchthrougha_rgba8_texture = GL_CheckExtension("OES_compressed_ETC2_punchthroughA_RGBA8_texture", NULL, "-noetc2rgba1", false);
+		vid.support.oes_compressed_etc2_rgba8_texture = GL_CheckExtension("OES_compressed_ETC2_RGBA8_texture", NULL, "-noetc2rgba", false);
+		vid.support.oes_compressed_etc2_srgb8_texture = GL_CheckExtension("OES_compressed_ETC2_sRGB8_texture", NULL, "-noetc2srgb", false);
+		vid.support.oes_compressed_etc2_punchthrougha_srgb8_alpha_texture = GL_CheckExtension("OES_compressed_ETC2_punchthroughA_sRGB8_alpha_texture", NULL, "-noetc2srgba1", false);
+		vid.support.oes_compressed_etc2_srgb8_alpha8_texture = GL_CheckExtension("OES_compressed_ETC2_sRGB8_alpha8_texture", NULL, "-noetc2srgba", false);
+		vid.support.arb_es3_compatibility_etc2_partial = ( vid.support.oes_compressed_etc2_rgb8_texture ||  vid.support.oes_compressed_etc2_punchthrougha_rgba8_texture || vid.support.oes_compressed_etc2_rgba8_texture || vid.support.oes_compressed_etc2_srgb8_texture || vid.support.oes_compressed_etc2_punchthrougha_srgb8_alpha_texture || vid.support.oes_compressed_etc2_srgb8_alpha8_texture ) ? true : false;	
+	}
 	vid.allowalphatocoverage = false;
 
 // COMMANDLINEOPTION: GL: -noshaders disables use of OpenGL 2.0 shaders (which allow pixel shader effects, can improve per pixel lighting performance and capabilities)
@@ -1124,6 +1146,12 @@ void VID_CheckExtensions(void)
 // COMMANDLINEOPTION: GL: -nosrgb disables GL_EXT_texture_sRGB (which is used for higher quality non-linear texture gamma)
 // COMMANDLINEOPTION: GL: -nomultisample disables GL_ARB_multisample
 // COMMANDLINEOPTION: GL: -noes3 disables GL_ARB_ES3_compatibility (used for ETC2/EAC compression)
+// COMMANDLINEOPTION: GL: -noetc2rgb disables OES_compressed_ETC2_RGB8_texture (used for ETC2/EAC compression)
+// COMMANDLINEOPTION: GL: -noetc2rgba1 disables OES_compressed_ETC2_punchthroughA_RGBA8_texture (used for ETC2/EAC compression)
+// COMMANDLINEOPTION: GL: -noetc2rgba disables OES_compressed_ETC2_RGBA8_texture (used for ETC2/EAC compression)
+// COMMANDLINEOPTION: GL: -noetc2srgb disables OES_compressed_ETC2_sRGB8_texture (used for ETC2/EAC compression)
+// COMMANDLINEOPTION: GL: -noetc2srgba1 disables OES_compressed_ETC2_punchthroughA_sRGB8_alpha_texture (used for ETC2/EAC compression)
+// COMMANDLINEOPTION: GL: -noetc2srgba disables OES_compressed_ETC2_sRGB8_alpha8_texture (used for ETC2/EAC compression)
 
 	if (vid.support.arb_draw_buffers)
 		qglGetIntegerv(GL_MAX_DRAW_BUFFERS_ARB, (GLint*)&vid.maxdrawbuffers);

@@ -390,7 +390,7 @@ static void R_Model_Sprite_Draw_TransparentCallback(const entity_render_t *ent, 
 			texture_t *texture;
 			frame = model->sprite.sprdata_frames + ent->frameblend[i].subframe;
 			RSurf_ActiveCustomEntity(&identitymatrix, &identitymatrix, ent->flags, 0, ent->colormod[0], ent->colormod[1], ent->colormod[2], ent->alpha * ent->frameblend[i].lerp, 4, vertex3f, frame->texcoord2f, NULL, NULL, NULL, NULL, 2, polygonelement3i, polygonelement3s, false, false);
-			texture = R_GetCurrentTexture(model->data_textures + frame->texnum);
+ 			texture = R_GetCurrentTexture(model->data_textures + frame->texnum);
 		
 			// lit sprite by lightgrid if it is not fullbright, lit only ambient
 			if (!(texture->currentmaterialflags & MATERIALFLAG_FULLBRIGHT))

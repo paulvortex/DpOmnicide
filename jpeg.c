@@ -29,6 +29,7 @@
 
 cvar_t sv_writepicture_quality = {CVAR_SAVE, "sv_writepicture_quality", "10", "WritePicture quality offset (higher means better quality, but slower)"};
 cvar_t r_texture_jpeg_fastpicmip = {CVAR_SAVE, "r_texture_jpeg_fastpicmip", "1", "perform gl_picmip during decompression for JPEG files (faster)"};
+cvar_t r_texture_jpeg_iccmode = {0, "r_texture_jpeg_iccmode", "0", "0: don't use embedded ICC profile, 1: detect for sRGB and set sRGB texture type"};
 
 // jboolean is unsigned char instead of int on Win32
 #ifdef WIN32
@@ -55,6 +56,7 @@ typedef int jboolean;
 #define qjpeg_std_error jpeg_std_error
 #define qjpeg_write_scanlines jpeg_write_scanlines
 #define qjpeg_simple_progression jpeg_simple_progression
+#define qjpeg_save_markers jpeg_save_markers
 #define jpeg_dll true
 #else
 /*
@@ -218,6 +220,17 @@ typedef struct {
   void * dct_table;
 } jpeg_component_info;
 
+// jpeg markers
+#define JPEG_APP0   0xE0
+
+typedef struct jpeg_marker_struct_s {
+	jpeg_marker_struct_s *next;
+	unsigned char marker;
+	unsigned int original_length;
+	unsigned int data_length;
+	unsigned char *data;
+} jpeg_marker_struct;
+
 struct jpeg_decompress_struct
 {
 	struct jpeg_error_mgr *err;		// USED
@@ -288,7 +301,7 @@ struct jpeg_decompress_struct
 	jboolean saw_Adobe_marker;
 	unsigned char Adobe_transform;
 	jboolean CCIR601_sampling;
-	void *marker_list;
+	jpeg_marker_struct *marker_list;
 	int max_h_samp_factor;
 	int max_v_samp_factor;
 	int min_DCT_scaled_size;
@@ -430,6 +443,7 @@ static jboolean (*qjpeg_start_decompress) (j_decompress_ptr cinfo);
 static struct jpeg_error_mgr* (*qjpeg_std_error) (struct jpeg_error_mgr *err);
 static JDIMENSION (*qjpeg_write_scanlines) (j_compress_ptr cinfo, unsigned char** scanlines, JDIMENSION num_lines);
 static void (*qjpeg_simple_progression) (j_compress_ptr cinfo);
+static void (*qjpeg_save_markers) (j_decompress_ptr cinfo, int marker_code, unsigned int length_limit);
 
 static dllfunction_t jpegfuncs[] =
 {
@@ -449,6 +463,7 @@ static dllfunction_t jpegfuncs[] =
 	{"jpeg_std_error",			(void **) &qjpeg_std_error},
 	{"jpeg_write_scanlines",	(void **) &qjpeg_write_scanlines},
 	{"jpeg_simple_progression",	(void **) &qjpeg_simple_progression},
+	{"jpeg_save_markers",	    (void **) &qjpeg_save_markers},
 	{NULL, NULL}
 };
 
@@ -595,6 +610,91 @@ static void JPEG_ErrorExit (j_common_ptr cinfo)
 }
 
 
+// extract color profile from JPEG markers
+// Since an ICC profile can be larger than the maximum size of a JPEG marker
+// (64K), we need provisions to split it into multiple markers.  The format
+// defined by the ICC specifies one or more APP2 markers containing the
+// following data:
+//	Identifying string	ASCII "ICC_PROFILE\0"  (12 bytes)
+//	Marker sequence number	1 for first APP2, 2 for next, etc (1 byte)
+//	Number of markers	Total number of APP2's used (1 byte)
+//      Profile data		(remainder of APP2 data)
+// Decoders should use the marker sequence numbers to reassemble the profile,
+// rather than assuming that the APP2 markers appear in the correct sequence.
+static int JPEG_GetICCData(const unsigned char *f, struct jpeg_decompress_struct *cinfo, unsigned char **data)
+{
+	unsigned char marker_present[256], *icc_data;
+	int num_markers, seq_no, total_length;
+	unsigned int data_length[256], data_offset[256];
+	const unsigned char icc_signature[12] = { 0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0x00 };
+	jpeg_marker_struct *marker;
+	
+	// find ICC markers
+	num_markers = 0;
+	memset(marker_present, 0, sizeof(marker_present));
+	memset(data_length, 0, sizeof(data_length));
+	memset(data_offset, 0, sizeof(data_offset));
+	for(marker = cinfo->marker_list; marker != NULL; marker = marker->next) 
+	{
+		// check if marker is ICC marger
+		if (marker->marker != (JPEG_APP0 + 2) || marker->data_length <= 14 || memcmp(icc_signature, marker->data, sizeof(icc_signature)))
+			continue;
+		if (num_markers == 0)
+			num_markers = marker->data[13];
+		else if (num_markers != marker->data[13]) 
+		{
+			Con_DPrintf("JPEG Warning: inconsistent num_markers fields on ICC marker in file '%s'\n", f);
+			return 0;
+		}
+		// sequence number
+		seq_no = marker->data[12];
+		if (seq_no <= 0 || seq_no > num_markers)
+		{
+			Con_DPrintf("JPEG Warning: bogus sequence number of ICC marker in file '%s'\n", f);
+			return 0;
+		}
+		if (marker_present[seq_no]) // duplicate sequence numbers
+		{
+			Con_DPrintf("JPEG Warning: duplicate sequence number of ICC marker in file '%s'\n", f);
+			return 0;
+		}
+		marker_present[seq_no] = 1;
+		data_length[seq_no] = marker->data_length - 14;         
+	}
+	if (!num_markers)
+		return 0;
+
+	// check for missing markers, count total space needed
+	total_length = 0;
+	for(seq_no = 1; seq_no <= num_markers; seq_no++)
+	{
+		if (!marker_present[seq_no]) // missing marker
+		{
+			Con_DPrintf("JPEG Warning: missing ICC marker %i in file '%s'\n", seq_no, f);
+			return 0;
+		}
+		data_offset[seq_no] = total_length;
+		total_length += data_length[seq_no];
+	}
+	if (!total_length) // bogus length
+	{
+		Con_DPrintf("JPEG Warning: bogus ICC length in file '%s'\n", f);
+		return 0;
+	}
+
+	// fill with marker data and return
+	icc_data = (unsigned char *)Mem_Alloc(tempmempool, total_length);
+	for (marker = cinfo->marker_list; marker != NULL; marker = marker->next) 
+	{
+		if (marker->marker != (JPEG_APP0 + 2) || marker->data_length <= 14 || memcmp(icc_signature, marker->data, sizeof(icc_signature)))
+			continue;
+		seq_no = marker->data[12];
+		memcpy(icc_data + data_offset[seq_no], marker->data + 14, data_length[seq_no]);
+	}
+	*data = icc_data;
+	return total_length;
+}
+
 /*
 ====================
 JPEG_LoadImage
@@ -602,7 +702,7 @@ JPEG_LoadImage
 Load a JPEG image into a BGRA buffer
 ====================
 */
-unsigned char* JPEG_LoadImage_BGRA (const unsigned char *f, int filesize, int *miplevel)
+unsigned char* JPEG_LoadImage_BGRA (const unsigned char *f, int filesize, int *miplevel, qboolean *sRGBcolorspace)
 {
 	struct jpeg_decompress_struct cinfo;
 	struct jpeg_error_mgr jerr;
@@ -624,9 +724,31 @@ unsigned char* JPEG_LoadImage_BGRA (const unsigned char *f, int filesize, int *m
 	cinfo.err = qjpeg_std_error (&jerr);
 	cinfo.err->error_exit = JPEG_ErrorExit;
 	JPEG_MemSrc (&cinfo, f, filesize);
+	if (sRGBcolorspace && r_texture_jpeg_iccmode.integer > 0)
+		qjpeg_save_markers(&cinfo, JPEG_APP0 + 2, 0xFFFF); // save markers to be read later
 	qjpeg_read_header (&cinfo, TRUE);
 	cinfo.scale_num = 1;
 	cinfo.scale_denom = (1 << submip);
+
+	// Check ICC profile
+	if (sRGBcolorspace)
+	{
+		*sRGBcolorspace = false;
+		if (r_texture_jpeg_iccmode.integer > 0)
+		{
+			unsigned char *iccpdata;
+			int iccpdatasize;
+
+			iccpdatasize = JPEG_GetICCData(f, &cinfo, &iccpdata);
+			if (iccpdatasize)
+			{
+				if (Image_ICCProfileTestsRGB(iccpdata, iccpdatasize))
+					*sRGBcolorspace = true;
+				Mem_Free(iccpdata);
+			}
+		}
+	}
+
 	qjpeg_start_decompress (&cinfo);
 
 	image_width = cinfo.output_width;
@@ -710,7 +832,6 @@ error_caught:
 	qjpeg_destroy_decompress (&cinfo);
 	return NULL;
 }
-
 
 /*
 =================================================================
@@ -1046,6 +1167,7 @@ static CompressedImageCacheItem *CompressedImageCache_Find(const char *imagename
 qboolean Image_Compress(const char *imagename, size_t maxsize, void **buf, size_t *size)
 {
 	unsigned char *imagedata, *newimagedata;
+	qboolean sRGBcolorspace;
 	int maxPixelCount;
 	int components[3] = {2, 1, 0};
 	CompressedImageCacheItem *i;
@@ -1068,7 +1190,7 @@ qboolean Image_Compress(const char *imagename, size_t maxsize, void **buf, size_
 	}
 
 	// load the image
-	imagedata = loadimagepixelsbgra(imagename, true, false, false, NULL);
+	imagedata = loadimagepixelsbgra(imagename, true, false, false, &sRGBcolorspace, NULL);
 	if(!imagedata)
 		return false;
 
@@ -1095,6 +1217,7 @@ qboolean Image_Compress(const char *imagename, size_t maxsize, void **buf, size_
 	Mem_Free(imagedata);
 
 	// try to compress it to JPEG
+	// fixme sRGB: write ICC profile for sRGB image
 	*buf = Z_Malloc(maxsize);
 	*size = JPEG_SaveImage_to_Buffer((char *) *buf, maxsize, image_width, image_height, newimagedata);
 	Mem_Free(newimagedata);

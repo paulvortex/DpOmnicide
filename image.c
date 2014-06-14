@@ -189,7 +189,7 @@ typedef struct pcx_s
 LoadPCX
 ============
 */
-static unsigned char* LoadPCX_BGRA (const unsigned char *f, int filesize, int *miplevel)
+static unsigned char* LoadPCX_BGRA (const unsigned char *f, int filesize, int *miplevel, qboolean *sRGBcolorspace)
 {
 	pcx_t pcx;
 	unsigned char *a, *b, *image_buffer, *pbuf;
@@ -271,6 +271,9 @@ static unsigned char* LoadPCX_BGRA (const unsigned char *f, int filesize, int *m
 		*a++ = palette[y];
 		*a++ = 255;
 	}
+
+	if (sRGBcolorspace)
+		*sRGBcolorspace = false; // always linear
 
 	return image_buffer;
 }
@@ -382,7 +385,7 @@ static void PrintTargaHeader(TargaHeader *t)
 LoadTGA
 =============
 */
-unsigned char *LoadTGA_BGRA (const unsigned char *f, int filesize, int *miplevel)
+unsigned char *LoadTGA_BGRA (const unsigned char *f, int filesize, int *miplevel, qboolean *sRGBcolorspace)
 {
 	int x, y, pix_inc, row_inci, runlen, alphabits;
 	unsigned char *image_buffer;
@@ -730,6 +733,9 @@ unsigned char *LoadTGA_BGRA (const unsigned char *f, int filesize, int *miplevel
 		break;
 	}
 
+	if (sRGBcolorspace)
+		*sRGBcolorspace = false; // always linear colorspace 
+
 	return image_buffer;
 }
 
@@ -744,7 +750,7 @@ typedef struct q2wal_s
 	int			value;
 } q2wal_t;
 
-static unsigned char *LoadWAL_BGRA (const unsigned char *f, int filesize, int *miplevel)
+static unsigned char *LoadWAL_BGRA (const unsigned char *f, int filesize, int *miplevel, qboolean *sRGBcolorspace)
 {
 	unsigned char *image_buffer;
 	const q2wal_t *inwal = (const q2wal_t *)f;
@@ -776,6 +782,7 @@ static unsigned char *LoadWAL_BGRA (const unsigned char *f, int filesize, int *m
 		return NULL;
 	}
 	Image_Copy8bitBGRA(f + LittleLong(inwal->offsets[0]), image_buffer, image_width * image_height, palette_bgra_complete);
+	*sRGBcolorspace = false; // always linear
 	return image_buffer;
 }
 
@@ -832,7 +839,7 @@ void Image_MakesRGBColorsFromLinear_Lightmap(unsigned char *pout, const unsigned
 typedef struct imageformat_s
 {
 	const char *formatstring;
-	unsigned char *(*loadfunc)(const unsigned char *f, int filesize, int *miplevel);
+	unsigned char *(*loadfunc)(const unsigned char *f, int filesize, int *miplevel, qboolean *sRGBcolorspace);
 }
 imageformat_t;
 
@@ -865,20 +872,6 @@ imageformat_t imageformats_nopath[] =
 	{NULL, NULL}
 };
 
-// GAME_DELUXEQUAKE only
-// VorteX: the point why i use such messy texture paths is
-// that GtkRadiant can't detect normal/gloss textures
-// and exclude them from texture browser
-// so i just use additional folder to store this textures
-imageformat_t imageformats_dq[] =
-{
-	{"%s.tga", LoadTGA_BGRA},
-	{"%s.jpg", JPEG_LoadImage_BGRA},
-	{"texturemaps/%s.tga", LoadTGA_BGRA},
-	{"texturemaps/%s.jpg", JPEG_LoadImage_BGRA},
-	{NULL, NULL}
-};
-
 imageformat_t imageformats_textures[] =
 {
 	{"%s.tga", LoadTGA_BGRA},
@@ -908,13 +901,14 @@ imageformat_t imageformats_other[] =
 };
 
 int fixtransparentpixels(unsigned char *data, int w, int h);
-unsigned char *loadimagepixelsbgra (const char *filename, qboolean complain, qboolean allowFixtrans, qboolean convertsRGB, int *miplevel)
+unsigned char *loadimagepixelsbgra (const char *filename, qboolean complain, qboolean allowFixtrans, qboolean convertsRGB, qboolean *sRGBcolorspace, int *miplevel)
 {
 	fs_offset_t filesize;
 	imageformat_t *firstformat, *format;
 	unsigned char *f, *data = NULL, *data2 = NULL;
 	char basename[MAX_QPATH], name[MAX_QPATH], name2[MAX_QPATH], *c;
 	char vabuf[1024];
+
 	//if (developer_memorydebug.integer)
 	//	Mem_CheckSentinelsGlobal();
 	if (developer_texturelogging.integer)
@@ -934,8 +928,6 @@ unsigned char *loadimagepixelsbgra (const char *filename, qboolean complain, qbo
 	}
 	if (gamemode == GAME_TENEBRAE)
 		firstformat = imageformats_tenebrae;
-	else if (gamemode == GAME_DELUXEQUAKE)
-		firstformat = imageformats_dq;
 	else if (!strcasecmp(name, "textures"))
 		firstformat = imageformats_textures;
 	else if (!strcasecmp(name, "gfx"))
@@ -952,7 +944,7 @@ unsigned char *loadimagepixelsbgra (const char *filename, qboolean complain, qbo
 		if (f)
 		{
 			int mymiplevel = miplevel ? *miplevel : 0;
-			data = format->loadfunc(f, (int)filesize, &mymiplevel);
+			data = format->loadfunc(f, (int)filesize, &mymiplevel, sRGBcolorspace);
 			Mem_Free(f);
 			if (data)
 			{
@@ -962,12 +954,15 @@ unsigned char *loadimagepixelsbgra (const char *filename, qboolean complain, qbo
 					f = FS_LoadFile(name2, tempmempool, true, &filesize);
 					if(f)
 					{
+						qboolean alpha_use_sRGBcolorspace;
 						int mymiplevel2 = miplevel ? *miplevel : 0;
-						data2 = format->loadfunc(f, (int)filesize, &mymiplevel2);
+						data2 = format->loadfunc(f, (int)filesize, &mymiplevel2, &alpha_use_sRGBcolorspace);
 						if(data2 && mymiplevel == mymiplevel2)
 							Image_CopyAlphaFromBlueBGRA(data, data2, image_width, image_height);
 						else
 							Con_Printf("loadimagepixelsrgba: corrupt or invalid alpha image %s_alpha\n", basename);
+						if (alpha_use_sRGBcolorspace)
+							Con_Printf("loadimagepixelsrgba: alpha image %s_alpha uses sRGB colorspace, output texture will be wrong\n", basename);
 						if(data2)
 							Mem_Free(data2);
 						Mem_Free(f);
@@ -996,7 +991,11 @@ unsigned char *loadimagepixelsbgra (const char *filename, qboolean complain, qbo
 					}
 				}
 				if (convertsRGB)
+				{
 					Image_MakeLinearColorsFromsRGB(data, data, image_width * image_height);
+					if (sRGBcolorspace)
+						*sRGBcolorspace = true;
+				}
 				return data;
 			}
 			else
@@ -1022,14 +1021,15 @@ unsigned char *loadimagepixelsbgra (const char *filename, qboolean complain, qbo
 }
 
 extern cvar_t gl_picmip;
-rtexture_t *loadtextureimage (rtexturepool_t *pool, const char *filename, qboolean complain, int flags, qboolean allowFixtrans, qboolean sRGB)
+rtexture_t *loadtextureimage (rtexturepool_t *pool, const char *filename, qboolean complain, int flags, qboolean allowFixtrans, qboolean force_sRGB)
 {
 	unsigned char *data;
+	qboolean sRGBcolorspace;
 	rtexture_t *rt;
 	int miplevel = R_PicmipForFlags(flags);
-	if (!(data = loadimagepixelsbgra (filename, complain, allowFixtrans, false, &miplevel)))
+	if (!(data = loadimagepixelsbgra (filename, complain, allowFixtrans, false, &sRGBcolorspace, &miplevel)))
 		return 0;
-	rt = R_LoadTexture2D(pool, filename, image_width, image_height, data, sRGB ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA, flags, miplevel, NULL);
+	rt = R_LoadTexture2D(pool, filename, image_width, image_height, data, (force_sRGB || sRGBcolorspace) ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA, flags, miplevel, NULL);
 	Mem_Free(data);
 	return rt;
 }
@@ -1175,7 +1175,7 @@ void Image_FixTransparentPixels_f(void)
 		Con_Printf("Processing %s... ", filename);
 		Image_StripImageExtension(filename, buf, sizeof(buf));
 		dpsnprintf(outfilename, sizeof(outfilename), "fixtrans/%s.tga", buf);
-		if(!(data = loadimagepixelsbgra(filename, true, false, false, NULL)))
+		if(!(data = loadimagepixelsbgra(filename, true, false, false, NULL, NULL)))
 			return;
 		if((n = fixtransparentpixels(data, image_width, image_height)))
 		{
@@ -1585,4 +1585,46 @@ void Image_HeightmapToNormalmap_BGRA(const unsigned char *inpixels, unsigned cha
 			out += 4;
 		}
 	}
+}
+
+/*
+================
+Image_ICCProfileTestsRGB
+VorteX: check if International Color Consortium color profile sets sRGB colorspace (used in image formats that supports ICC embedding: PNG, JPEG) 
+================
+*/
+
+qboolean Image_ICCProfileTestsRGB(void *profile_data, int datasize)
+{
+	int i, numTags, tag_ofs, tag_size;
+	unsigned char *icc, *tag, *icc_end;
+	char tagdata[256];
+
+	if (!profile_data)
+		return false; // not loaded
+	icc = (byte *)profile_data;
+	if (icc[36] != 'a' || icc[37] != 'c' || icc[38] != 's' || icc[39] != 'p')
+		return false; // not an ICC file
+	icc_end = icc + datasize;
+	numTags = icc[128+0]*0x1000000 + icc[128+1]*0x10000 + icc[128+2]*0x100 + icc[128+3];
+	// search for 'desc' tag
+	for (i = 0; i < numTags; i++)
+	{
+		tag = icc + 128 + 4 + i*12;
+		if (tag > icc_end)
+			return false; // invalid ICC file
+		// check for a desc flag
+		if (!memcmp(tag, "desc", 4))
+		{
+			tag_ofs = tag[4]*0x1000000 + tag[5]*0x10000 + tag[6]*0x100 + tag[7];
+			tag_size = tag[8]*0x1000000 + tag[9]*0x10000 + tag[10]*0x100 + tag[11];
+			if (tag_ofs + tag_size > datasize)
+				return false; // invalid ICC file
+			strlcpy(tagdata, (char *)(icc+tag_ofs+12), min(255, tag_size-12));
+			if (!strcmp(tagdata, "sRGB IEC61966-2.1") || !strcmp(tagdata, "sRGB IEC61966-2-1") || !strcmp(tagdata, "sRGB IEC61966") || !strcmp(tagdata, "* wsRGB"))
+				return true;
+			return false;
+		}
+	}
+	return false;
 }

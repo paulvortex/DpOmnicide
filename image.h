@@ -20,16 +20,16 @@ void Image_Copy8bitBGRA(const unsigned char *in, unsigned char *out, int pixels,
 void Image_StripImageExtension (const char *in, char *out, size_t size_out);
 
 // called by conchars.tga loader in gl_draw.c, otherwise private
-unsigned char *LoadTGA_BGRA (const unsigned char *f, int filesize, int *miplevel);
+unsigned char *LoadTGA_BGRA (const unsigned char *f, int filesize, int *miplevel, qboolean *sRGBcolorspace);
 
 // loads a texture, as pixel data
-unsigned char *loadimagepixelsbgra (const char *filename, qboolean complain, qboolean allowFixtrans, qboolean convertsRGB, int *miplevel);
+unsigned char *loadimagepixelsbgra (const char *filename, qboolean complain, qboolean allowFixtrans, qboolean convertsRGB, qboolean *sRGBcolorspace, int *miplevel);
 
 // loads an 8bit pcx image into a 296x194x8bit buffer, with cropping as needed
 qboolean LoadPCX_QWSkin(const unsigned char *f, int filesize, unsigned char *pixels, int outwidth, int outheight);
 
 // loads a texture, as a texture
-rtexture_t *loadtextureimage (rtexturepool_t *pool, const char *filename, qboolean complain, int flags, qboolean allowFixtrans, qboolean sRGB);
+rtexture_t *loadtextureimage (rtexturepool_t *pool, const char *filename, qboolean complain, int flags, qboolean allowFixtrans, qboolean force_sRGB);
 
 // writes an upside down BGR image into a TGA
 qboolean Image_WriteTGABGR_preflipped (const char *filename, int width, int height, const unsigned char *data);
@@ -57,6 +57,9 @@ extern cvar_t r_fixtrans_auto;
 
 void Image_MakeLinearColorsFromsRGB(unsigned char *pout, const unsigned char *pin, int numpixels);
 void Image_MakesRGBColorsFromLinear_Lightmap(unsigned char *pout, const unsigned char *pin, int numpixels);
+
+// VorteX: check if International Color Consortium color profile sets sRGB colorspace (used in image formats that supports ICC embedding: PNG, JPEG)
+qboolean Image_ICCProfileTestsRGB(void *profile_data, int datasize);
 
 #endif
 

@@ -67,7 +67,7 @@ void Draw_Frame (void);
 cachepic_t *Draw_CachePic_Flags (const char *path, unsigned int cachepicflags);
 cachepic_t *Draw_CachePic (const char *path); // standard function with no options, used throughout engine
 // create or update a pic's image
-cachepic_t *Draw_NewPic(const char *picname, int width, int height, int alpha, unsigned char *pixels);
+cachepic_t *Draw_NewPic(const char *picname, int width, int height, int alpha, unsigned char *pixels, qboolean sRGB);
 // free the texture memory used by a pic
 void Draw_FreePic(const char *picname);
 

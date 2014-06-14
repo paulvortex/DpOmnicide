@@ -76,6 +76,14 @@ typedef struct viddef_support_s
 	qboolean ext_texture_srgb;
 	qboolean arb_multisample;
 	qboolean arb_es3_compatibility;
+	qboolean arb_es3_compatibility_etc2_partial;
+	qboolean oes_compressed_etc1_rgb8_texture;
+	qboolean oes_compressed_etc2_rgb8_texture;
+    qboolean oes_compressed_etc2_srgb8_texture;
+    qboolean oes_compressed_etc2_punchthrougha_rgba8_texture;
+    qboolean oes_compressed_etc2_punchthrougha_srgb8_alpha_texture;
+    qboolean oes_compressed_etc2_rgba8_texture;
+    qboolean oes_compressed_etc2_srgb8_alpha8_texture;
 }
 viddef_support_t;
 

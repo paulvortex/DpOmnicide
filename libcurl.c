@@ -473,7 +473,7 @@ static void curl_quiet_callback(int status, size_t length_received, unsigned cha
 	curl_default_callback(status, length_received, buffer, cbdata);
 }
 
-static unsigned char *decode_image(downloadinfo *di, const char *content_type)
+static unsigned char *decode_image(downloadinfo *di, const char *content_type, qboolean *sRGBcolorspace)
 {
 	unsigned char *pixels = NULL;
 	fs_offset_t filesize = 0;
@@ -482,13 +482,13 @@ static unsigned char *decode_image(downloadinfo *di, const char *content_type)
 	{
 		int mip = 0;
 		if(!strcmp(content_type, "image/jpeg"))
-			pixels = JPEG_LoadImage_BGRA(data, filesize, &mip);
+			pixels = JPEG_LoadImage_BGRA(data, filesize, &mip, sRGBcolorspace);
 		else if(!strcmp(content_type, "image/png"))
-			pixels = PNG_LoadImage_BGRA(data, filesize, &mip);
+			pixels = PNG_LoadImage_BGRA(data, filesize, &mip, sRGBcolorspace);
 		else if(filesize >= 7 && !strncmp((char *) data, "\xFF\xD8", 7))
-			pixels = JPEG_LoadImage_BGRA(data, filesize, &mip);
+			pixels = JPEG_LoadImage_BGRA(data, filesize, &mip, sRGBcolorspace);
 		else if(filesize >= 7 && !strncmp((char *) data, "\x89PNG\x0D\x0A\x1A\x0A", 7))
-			pixels = PNG_LoadImage_BGRA(data, filesize, &mip);
+			pixels = PNG_LoadImage_BGRA(data, filesize, &mip, sRGBcolorspace);
 		else
 			Con_Printf("Did not detect content type: %s\n", content_type);
 		Mem_Free(data);
@@ -586,6 +586,7 @@ static void Curl_EndDownload(downloadinfo *di, CurlStatus status, CURLcode error
 	{
 		const char *p;
 		unsigned char *pixels = NULL;
+		qboolean sRGBcolorspace;
 
 		p = di->filename;
 #ifdef WE_ARE_EVIL
@@ -593,9 +594,9 @@ static void Curl_EndDownload(downloadinfo *di, CurlStatus status, CURLcode error
 			p += 8;
 #endif
 
-		pixels = decode_image(di, content_type);
+		pixels = decode_image(di, content_type, &sRGBcolorspace);
 		if(pixels)
-			Draw_NewPic(p, image_width, image_height, true, pixels);
+			Draw_NewPic(p, image_width, image_height, true, pixels, sRGBcolorspace);
 		else
 			CLEAR_AND_RETRY();
 	}
@@ -603,16 +604,18 @@ static void Curl_EndDownload(downloadinfo *di, CurlStatus status, CURLcode error
 	{
 		const char *p;
 		unsigned char *pixels = NULL;
+		qboolean sRGBcolorspace;
 
 		p = di->filename;
 #ifdef WE_ARE_EVIL
 		if(!strncmp(p, "dlcache/", 8))
 			p += 8;
 #endif
-
-		pixels = decode_image(di, content_type);
+	
+		
+		pixels = decode_image(di, content_type, &sRGBcolorspace);
 		if(pixels)
-			R_SkinFrame_LoadInternalBGRA(p, TEXF_FORCE_RELOAD | TEXF_MIPMAP | TEXF_ALPHA, pixels, image_width, image_height, false); // TODO what sRGB argument to put here?
+			R_SkinFrame_LoadInternalBGRA(p, TEXF_FORCE_RELOAD | TEXF_MIPMAP | TEXF_ALPHA, pixels, image_width, image_height, sRGBcolorspace); // TODO what sRGB argument to put here?
 		else
 			CLEAR_AND_RETRY();
 	}

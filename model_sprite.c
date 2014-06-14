@@ -382,7 +382,7 @@ static void Mod_Sprite_SetupPackedSprite(const unsigned char *datapointer, int v
 	loadmodel->animscenes = (animscene_t *)Mem_Alloc(loadmodel->mempool, sizeof(animscene_t) * loadmodel->numframes);
 	loadmodel->sprite.sprdata_frames = (mspriteframe_t *)Mem_Alloc(loadmodel->mempool, sizeof(mspriteframe_t) * realframes);
 	loadmodel->sprite.sprdata_framestexcoord2f = (float *)Mem_Alloc(loadmodel->mempool, sizeof(float[4*2]) * realframes);
-	
+
 	// load frames
 	datapointer = (unsigned char *)startframes;
 	realframes = 0;
@@ -434,7 +434,7 @@ static void Mod_Sprite_SetupPackedSprite(const unsigned char *datapointer, int v
 			loadmodel->sprite.sprdata_frames[realframes].up = origin[1];
 			loadmodel->sprite.sprdata_frames[realframes].down = origin[1] - height;
 			loadmodel->sprite.sprdata_frames[realframes].texnum = texnum;
-			
+
 			// calc texture coordinates
 			texcoord2f = loadmodel->sprite.sprdata_framestexcoord2f + realframes*4*2; 
 			texwidth = texturedimensions[texnum * 2];
@@ -597,7 +597,6 @@ void Mod_IDSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 
 	loadmodel->surfmesh.isanimated = loadmodel->numframes > 1 || (loadmodel->animscenes && loadmodel->animscenes[0].framecount > 1);
 }
-
 
 void Mod_IDS2_Load(dp_model_t *mod, void *buffer, void *bufferend)
 {

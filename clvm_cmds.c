@@ -1707,6 +1707,7 @@ static void VM_CL_ReadPicture (prvm_prog_t *prog)
 	unsigned short size;
 	int i;
 	cachepic_t *pic;
+	qboolean sRGBcolorspace;
 
 	VM_SAFEPARMCOUNT(0, VM_CL_ReadPicture);
 
@@ -1736,9 +1737,9 @@ static void VM_CL_ReadPicture (prvm_prog_t *prog)
 			// use the attached jpeg as texture
 			buf = (unsigned char *) Mem_Alloc(tempmempool, size);
 			MSG_ReadBytes(&cl_message, size, buf);
-			data = JPEG_LoadImage_BGRA(buf, size, NULL);
+			data = JPEG_LoadImage_BGRA(buf, size, NULL, &sRGBcolorspace);
 			Mem_Free(buf);
-			Draw_NewPic(name, image_width, image_height, false, data);
+			Draw_NewPic(name, image_width, image_height, false, data, sRGBcolorspace);
 			Mem_Free(data);
 		}
 	}

@@ -30,6 +30,10 @@
 #include "image.h"
 #include "image_png.h"
 
+#define PNG_iCCP_SUPPORTED 1 
+#define PNG_sRGB_SUPPORTED 1 
+
+cvar_t r_texture_png_iccmode = {0, "r_texture_png_iccmode", "0", "0: don't use embedded ICC profile, 1: detect for sRGB and set sRGB texture type"};
 
 static void				(*qpng_set_sig_bytes)		(void*, int);
 static int				(*qpng_sig_cmp)				(const unsigned char*, size_t, size_t);
@@ -60,7 +64,13 @@ static unsigned int		(*qpng_get_rowbytes)		(void*, void*);
 static unsigned char	(*qpng_get_channels)		(void*, void*);
 static unsigned char	(*qpng_get_bit_depth)		(void*, void*);
 static unsigned int		(*qpng_get_IHDR)			(void*, void*, unsigned long*, unsigned long*, int *, int *, int *, int *, int *);
-static unsigned int			(*qpng_access_version_number)		(void); // FIXME is this return type right? It is a png_uint_32 in libpng
+#ifdef PNG_iCCP_SUPPORTED
+static unsigned int     (*qpng_get_iCCP)            (void*, void*, char**, int *, unsigned char**, unsigned int *);
+#endif
+#ifdef PNG_sRGB_SUPPORTED
+static unsigned int     (*qpng_get_sRGB)            (void*, void*, int *);
+#endif
+static unsigned int		(*qpng_access_version_number)		(void); // FIXME is this return type right? It is a png_uint_32 in libpng
 static void				(*qpng_write_info)			(void*, void*);
 static void				(*qpng_write_row)			(void*, unsigned char*);
 static void				(*qpng_write_end)			(void*, void*);
@@ -108,6 +118,12 @@ static dllfunction_t pngfuncs[] =
 	{"png_get_channels",		(void **) &qpng_get_channels},
 	{"png_get_bit_depth",		(void **) &qpng_get_bit_depth},
 	{"png_get_IHDR",			(void **) &qpng_get_IHDR},
+#ifdef PNG_iCCP_SUPPORTED
+	{"png_get_iCCP",			(void **) &qpng_get_iCCP},
+#endif
+#ifdef PNG_sRGB_SUPPORTED
+	{"png_get_sRGB",			(void **) &qpng_get_sRGB},
+#endif
 	{"png_access_version_number",		(void **) &qpng_access_version_number},
 	{"png_write_info",			(void **) &qpng_write_info},
 	{"png_write_row",			(void **) &qpng_write_row},
@@ -224,6 +240,8 @@ void PNG_CloseLibrary (void)
 #define PNG_COLOR_TYPE_GA  PNG_COLOR_TYPE_GRAY_ALPHA
 
 #define PNG_INFO_tRNS 0x0010
+#define PNG_INFO_iCCP 0x1000
+#define PNG_INFO_sRGB 0x0800
 
 // this struct is only used for status information during loading
 static struct
@@ -291,7 +309,7 @@ static void PNG_warning_fn(void *png, const char *message)
 	Con_Printf("PNG_LoadImage: warning: %s\n", message);
 }
 
-unsigned char *PNG_LoadImage_BGRA (const unsigned char *raw, int filesize, int *miplevel)
+unsigned char *PNG_LoadImage_BGRA (const unsigned char *raw, int filesize, int *miplevel, qboolean *sRGBcolorspace)
 {
 	unsigned int c;
 	unsigned int	y;
@@ -386,6 +404,31 @@ unsigned char *PNG_LoadImage_BGRA (const unsigned char *raw, int filesize, int *
 		qpng_set_expand(png);
 
 	qpng_read_update_info(png, pnginfo);
+
+	if (sRGBcolorspace)
+	{
+		*sRGBcolorspace = false;
+		// VorteX: read ICC profile
+		if (r_texture_png_iccmode.integer > 0)
+		{
+			char *iccpname;
+			unsigned char *iccpdata;
+			unsigned int iccpdatasize;
+			int iccpcompression, srgbintent;
+
+#ifdef PNG_iCCP_SUPPORTED
+			// test iCCP chunk
+			if (qpng_get_iCCP(png, pnginfo, &iccpname, &iccpcompression, &iccpdata, &iccpdatasize) == PNG_INFO_iCCP)
+				if (Image_ICCProfileTestsRGB(iccpdata, iccpdatasize))
+					*sRGBcolorspace = true;
+#endif
+#ifdef PNG_sRGB_SUPPORTED
+			// test sRGB chunk
+			if (qpng_get_sRGB(png, pnginfo, &srgbintent) == PNG_INFO_sRGB)
+				*sRGBcolorspace = true;
+#endif
+		}
+	}
 
 	my_png.FRowBytes = qpng_get_rowbytes(png, pnginfo);
 	my_png.BytesPerPixel = qpng_get_channels(png, pnginfo);

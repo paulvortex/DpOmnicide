@@ -68,8 +68,9 @@ static rtexture_t *draw_generateconchars(void)
 	unsigned char *data;
 	double random;
 	rtexture_t *tex;
+	qboolean sRGBcolorspace;
 
-	data = LoadTGA_BGRA (concharimage, FONT_FILESIZE, NULL);
+	data = LoadTGA_BGRA (concharimage, FONT_FILESIZE, NULL, &sRGBcolorspace);
 // Gold numbers
 	for (i = 0;i < 8192;i++)
 	{
@@ -111,7 +112,7 @@ static rtexture_t *draw_generateconchars(void)
 	Image_WriteTGABGRA ("gfx/generated_conchars.tga", 256, 256, data);
 #endif
 
-	tex = R_LoadTexture2D(drawtexturepool, "conchars", 256, 256, data, TEXTYPE_BGRA, TEXF_ALPHA | (r_nearest_conchars.integer ? TEXF_FORCENEAREST : 0), -1, NULL);
+	tex = R_LoadTexture2D(drawtexturepool, "conchars", 256, 256, data, sRGBcolorspace ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA, TEXF_ALPHA | (r_nearest_conchars.integer ? TEXF_FORCENEAREST : 0), -1, NULL);
 	Mem_Free(data);
 	return tex;
 }
@@ -326,6 +327,7 @@ cachepic_t *Draw_CachePic_Flags(const char *path, unsigned int cachepicflags)
 	float ddsavgcolor[4];
 	qboolean loaded = false;
 	char vabuf[1024];
+	qboolean sRGBcolorspace;
 
 	texflags = TEXF_ALPHA;
 	if (!(cachepicflags & CACHEPICFLAG_NOCLAMP))
@@ -407,7 +409,7 @@ reload:
 		pic->width = R_TextureWidth(pic->tex);
 		pic->height = R_TextureHeight(pic->tex);
 	}
-	if (!loaded && ((pixels = loadimagepixelsbgra(pic->name, false, true, false, NULL)) || (!strncmp(pic->name, "gfx/", 4) && (pixels = loadimagepixelsbgra(pic->name+4, false, true, false, NULL)))))
+	if (!loaded && ((pixels = loadimagepixelsbgra(pic->name, false, true, false, &sRGBcolorspace, NULL)) || (!strncmp(pic->name, "gfx/", 4) && (pixels = loadimagepixelsbgra(pic->name+4, false, true, false, &sRGBcolorspace, NULL)))))
 	{
 		loaded = true;
 		pic->hasalpha = false;
@@ -427,7 +429,7 @@ reload:
 		pic->height = image_height;
 		if (!pic->autoload)
 		{
-			pic->tex = R_LoadTexture2D(drawtexturepool, pic->name, image_width, image_height, pixels, vid.sRGB2D ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA, pic->texflags & (pic->hasalpha ? ~0 : ~TEXF_ALPHA), -1, NULL);
+			pic->tex = R_LoadTexture2D(drawtexturepool, pic->name, image_width, image_height, pixels, (vid.sRGB2D || sRGBcolorspace) ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA, pic->texflags & (pic->hasalpha ? ~0 : ~TEXF_ALPHA), -1, NULL);
 #ifndef USE_GLES2
 			if (r_texture_dds_save.integer && qglGetCompressedTexImageARB && pic->tex)
 				R_SaveTextureDDSFile(pic->tex, va(vabuf, sizeof(vabuf), "dds/%s.dds", pic->name), r_texture_dds_save.integer < 2, pic->hasalpha, NULL);
@@ -569,7 +571,7 @@ void Draw_Frame(void)
 	draw_frame++;
 }
 
-cachepic_t *Draw_NewPic(const char *picname, int width, int height, int alpha, unsigned char *pixels_bgra)
+cachepic_t *Draw_NewPic(const char *picname, int width, int height, int alpha, unsigned char *pixels_bgra, qboolean sRGB)
 {
 	int crc, hashkey;
 	cachepic_t *pic;
@@ -582,6 +584,7 @@ cachepic_t *Draw_NewPic(const char *picname, int width, int height, int alpha, u
 
 	if (pic)
 	{
+		// fixme sRGB: this does not check RGB/sRGB color space changes
 		if (pic->flags == CACHEPICFLAG_NEWPIC && pic->tex && pic->width == width && pic->height == height)
 		{
 			R_UpdateTexture(pic->tex, pixels_bgra, 0, 0, 0, width, height, 1);
@@ -609,7 +612,7 @@ cachepic_t *Draw_NewPic(const char *picname, int width, int height, int alpha, u
 	pic->height = height;
 	if (pic->allow_free_tex && pic->tex)
 		R_FreeTexture(pic->tex);
-	pic->tex = R_LoadTexture2D(drawtexturepool, picname, width, height, pixels_bgra, TEXTYPE_BGRA, (alpha ? TEXF_ALPHA : 0), -1, NULL);
+	pic->tex = R_LoadTexture2D(drawtexturepool, picname, width, height, pixels_bgra, sRGB ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA, (alpha ? TEXF_ALPHA : 0), -1, NULL);
 	return pic;
 }
 

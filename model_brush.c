@@ -1557,7 +1557,7 @@ R_Q1BSP_LoadSplitSky
 A sky texture is 256*128, with the right side being a masked overlay
 ==============
 */
-static void R_Q1BSP_LoadSplitSky (unsigned char *src, int width, int height, int bytesperpixel)
+static void R_Q1BSP_LoadSplitSky (unsigned char *src, int width, int height, int bytesperpixel, qboolean sRGBcolorspace)
 {
 	int x, y;
 	int w = width/2;
@@ -1617,8 +1617,8 @@ static void R_Q1BSP_LoadSplitSky (unsigned char *src, int width, int height, int
 		}
 	}
 
-	loadmodel->brush.solidskyskinframe = R_SkinFrame_LoadInternalBGRA("sky_solidtexture", 0         , (unsigned char *) solidpixels, w, h, vid.sRGB3D);
-	loadmodel->brush.alphaskyskinframe = R_SkinFrame_LoadInternalBGRA("sky_alphatexture", TEXF_ALPHA, (unsigned char *) alphapixels, w, h, vid.sRGB3D);
+	loadmodel->brush.solidskyskinframe = R_SkinFrame_LoadInternalBGRA("sky_solidtexture", 0         , (unsigned char *) solidpixels, w, h, vid.sRGB3D || sRGBcolorspace);
+	loadmodel->brush.alphaskyskinframe = R_SkinFrame_LoadInternalBGRA("sky_alphatexture", TEXF_ALPHA, (unsigned char *) alphapixels, w, h, vid.sRGB3D || sRGBcolorspace);
 	Mem_Free(solidpixels);
 	Mem_Free(alphapixels);
 }
@@ -1635,6 +1635,8 @@ static void Mod_Q1BSP_LoadTextures(sizebuf_t *sb)
 	unsigned char zeroopaque[4], zerotrans[4];
 	sizebuf_t miptexsb;
 	char vabuf[1024];
+	qboolean sRGBcolorspace;
+
 	Vector4Set(zeroopaque, 0, 0, 0, 255);
 	Vector4Set(zerotrans, 0, 0, 0, 128);
 
@@ -1816,16 +1818,16 @@ static void Mod_Q1BSP_LoadTextures(sizebuf_t *sb)
 			// LordHavoc: HL sky textures are entirely different than quake
 			if (!loadmodel->brush.ishlbsp && !strncmp(tx->name, "sky", 3) && mtwidth == mtheight * 2)
 			{
-				data = loadimagepixelsbgra(gamemode == GAME_TENEBRAE ? tx->name : va(vabuf, sizeof(vabuf), "textures/%s/%s", mapname, tx->name), false, false, false, NULL);
+				data = loadimagepixelsbgra(gamemode == GAME_TENEBRAE ? tx->name : va(vabuf, sizeof(vabuf), "textures/%s/%s", mapname, tx->name), false, false, false, &sRGBcolorspace, NULL);
 				if (!data)
-					data = loadimagepixelsbgra(gamemode == GAME_TENEBRAE ? tx->name : va(vabuf, sizeof(vabuf), "textures/%s", tx->name), false, false, false, NULL);
+					data = loadimagepixelsbgra(gamemode == GAME_TENEBRAE ? tx->name : va(vabuf, sizeof(vabuf), "textures/%s", tx->name), false, false, false, &sRGBcolorspace, NULL);
 				if (data && image_width == image_height * 2)
 				{
-					R_Q1BSP_LoadSplitSky(data, image_width, image_height, 4);
+					R_Q1BSP_LoadSplitSky(data, image_width, image_height, 4, sRGBcolorspace);
 					Mem_Free(data);
 				}
 				else if (mtdata != NULL)
-					R_Q1BSP_LoadSplitSky(mtdata, mtwidth, mtheight, 1);
+					R_Q1BSP_LoadSplitSky(mtdata, mtwidth, mtheight, 1, sRGBcolorspace);
 			}
 			else
 			{
@@ -4980,11 +4982,12 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 	unsigned char *c;
 	unsigned char *mergedpixels;
 	unsigned char *mergeddeluxepixels;
+	qboolean external, mergedpixels_sRGB, mergeddeluxepixels_sRGB;
 	unsigned char *mergebuf;
 	char mapname[MAX_QPATH];
-	qboolean external;
 	unsigned char *inpixels[10000]; // max count q3map2 can output (it uses 4 digits)
 	skinframe_t *skinframes[10000], *sf;
+	qboolean inpixels_sRGB[10000];
 	char vabuf[1024];
 
 	// defaults for q3bsp
@@ -5060,7 +5063,7 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 			FS_StripExtension(loadmodel->name, mapname, sizeof(mapname));
 
 			// load first lightmap
-			inpixels[0] = loadimagepixelsbgra(va(vabuf, sizeof(vabuf), "%s/lm_%04d", mapname, 0), false, false, false, NULL);
+			inpixels[0] = loadimagepixelsbgra(va(vabuf, sizeof(vabuf), "%s/lm_%04d", mapname, 0), false, false, false, &(inpixels_sRGB[0]), NULL);
 			if(!inpixels[0])
 				return;
 
@@ -5080,7 +5083,7 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 
 			for(count = 1; ; ++count)
 			{
-				inpixels[count] = loadimagepixelsbgra(va(vabuf, sizeof(vabuf), "%s/lm_%04d", mapname, count), false, false, false, NULL);
+				inpixels[count] = loadimagepixelsbgra(va(vabuf, sizeof(vabuf), "%s/lm_%04d", mapname, count), false, false, false, &(inpixels_sRGB[0]), NULL);
 				if(!inpixels[count])
 					break; // we got all of them
 				if(image_width != size || image_height != size)
@@ -5210,8 +5213,11 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 
 		// load deluxemap
 		if( loadmodel->brushq3.deluxemapping )
+		{
 			loadmodel->brushq3.data_deluxemaps[0] = R_LoadTexture2D( loadmodel->texturepool, va(vabuf, sizeof(vabuf), "deluxemap%04i", 1), image_width, image_height, inpixels[1], TEXTYPE_BGRA, TEXF_FORCELINEAR | (gl_texturecompression_q3bspdeluxemaps.integer ? TEXF_COMPRESS : 0), -1, NULL );
-		
+			if (inpixels_sRGB[1]) // Vortex: show warning for sRGB colorspace deluxemaps
+				Con_Printf("deluxemap image \"deluxemap%04i\" is using sRGB colorspace, should be linear RGB\n", 1);
+		}
 		// load lightmap
 		if( mod_q3bsp_sRGBlightmaps.integer )
 		{
@@ -5228,7 +5234,7 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 		{
 			if ( vid_sRGB.integer && vid_sRGB_fallback.integer && !vid.sRGB3D )
 				Image_MakesRGBColorsFromLinear_Lightmap( inpixels[0], inpixels[0], image_width * image_height );
-			loadmodel->brushq3.data_lightmaps[0] = R_LoadTexture2D( loadmodel->texturepool, va(vabuf, sizeof(vabuf), "lightmap%04i", 0), image_width, image_height, inpixels[0], TEXTYPE_BGRA, TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), -1, NULL );
+			loadmodel->brushq3.data_lightmaps[0] = R_LoadTexture2D( loadmodel->texturepool, va(vabuf, sizeof(vabuf), "lightmap%04i", 0), image_width, image_height, inpixels[0], inpixels_sRGB[0] ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA, TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), -1, NULL );
 		}
 		if( external )
 			for( i = 0; i < count; ++i )
@@ -5273,14 +5279,16 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 		loadmodel->brushq3.num_mergedlightmaps = (realcount + (1 << powerxy) - 1) >> powerxy;
 		loadmodel->brushq3.data_lightmaps = (rtexture_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brushq3.num_mergedlightmaps * sizeof(rtexture_t *));
 		if (loadmodel->brushq3.deluxemapping)
-			loadmodel->brushq3.data_deluxemaps = (rtexture_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brushq3.num_mergedlightmaps * sizeof(rtexture_t *));
+			loadmodel->brushq3.data_deluxemaps = (rtexture_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brushq3.num_mergedlightmaps * sizeof(rtexture_t *));		
 
 		// allocate a texture pool if we need it
 		if (loadmodel->texturepool == NULL && cls.state != ca_dedicated)
 			loadmodel->texturepool = R_AllocTexturePool();
 
 		mergedpixels = (unsigned char *) Mem_Alloc(tempmempool, mergedwidth * mergedheight * 4);
+		mergedpixels_sRGB = false;
 		mergeddeluxepixels = loadmodel->brushq3.deluxemapping ? (unsigned char *) Mem_Alloc(tempmempool, mergedwidth * mergedheight * 4) : NULL;
+		mergeddeluxepixels_sRGB = false;
 		for (i = 0;i < count;i++)
 		{
 			// figure out which merged lightmap texture this fits into
@@ -5288,10 +5296,32 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 			lightmapindex = i >> powerdxy;
 
 			// choose the destination address
-			mergebuf = (loadmodel->brushq3.deluxemapping && (i & 1)) ? mergeddeluxepixels : mergedpixels;
-			mergebuf += 4 * (realindex & (mergedcolumns-1))*size + 4 * ((realindex >> powerx) & (mergedrows-1))*mergedwidth*size;
+			if (loadmodel->brushq3.deluxemapping && (i & 1))
+			{
+				mergebuf = mergeddeluxepixels;
+				mergebuf += 4 * (realindex & (mergedcolumns-1))*size + 4 * ((realindex >> powerx) & (mergedrows-1))*mergedwidth*size;
+				if (mergebuf == mergeddeluxepixels)
+					mergeddeluxepixels_sRGB = inpixels_sRGB[i]; // initialise colorspace format on first tile
+				else if (mergeddeluxepixels_sRGB != inpixels_sRGB[i])
+					Con_Printf("Warning: mixed RGB/sRGB colorspace on merged lightmap %i\n", lightmapindex);
+			}
+			else
+			{
+				mergebuf = mergedpixels;
+				mergebuf += 4 * (realindex & (mergedcolumns-1))*size + 4 * ((realindex >> powerx) & (mergedrows-1))*mergedwidth*size;
+				if (mergebuf == mergedpixels)
+					mergedpixels_sRGB = inpixels_sRGB[i]; // initialise colorspace format on first tile
+				else if (mergedpixels_sRGB != inpixels_sRGB[i])
+					Con_Printf("Warning: mixed RGB/sRGB colorspace on merged lightmap %i\n", lightmapindex);
+			}
 			if ((i & 1) == 0 || !loadmodel->brushq3.deluxemapping)
 				Con_DPrintf("copying original lightmap %i (%ix%i) to %i (at %i,%i)\n", i, size, size, lightmapindex, (realindex & (mergedcolumns-1))*size, ((realindex >> powerx) & (mergedrows-1))*size);
+
+			// initialise colorspace format on first tile
+			if (mergebuf == mergedpixels)
+				mergedpixels_sRGB = inpixels_sRGB[i];
+			else if (loadmodel->brushq3.deluxemapping && mergebuf == mergeddeluxepixels)
+				mergeddeluxepixels_sRGB = inpixels_sRGB[i];
 
 			// convert pixels from RGB or BGRA while copying them into the destination rectangle
 			for (j = 0;j < size;j++)
@@ -5307,7 +5337,7 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 			if (((realindex + 1) & (mergedrowsxcolumns - 1)) == 0 || (realindex + 1) == realcount)
 			{
 				if (loadmodel->brushq3.deluxemapping && (i & 1))
-					loadmodel->brushq3.data_deluxemaps[lightmapindex] = R_LoadTexture2D(loadmodel->texturepool, va(vabuf, sizeof(vabuf), "deluxemap%04i", lightmapindex), mergedwidth, mergedheight, mergeddeluxepixels, TEXTYPE_BGRA, TEXF_FORCELINEAR | (gl_texturecompression_q3bspdeluxemaps.integer ? TEXF_COMPRESS : 0), -1, NULL);
+					loadmodel->brushq3.data_deluxemaps[lightmapindex] = R_LoadTexture2D(loadmodel->texturepool, va(vabuf, sizeof(vabuf), "deluxemap%04i", lightmapindex), mergedwidth, mergedheight, mergeddeluxepixels, mergeddeluxepixels_sRGB ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA, TEXF_FORCELINEAR | (gl_texturecompression_q3bspdeluxemaps.integer ? TEXF_COMPRESS : 0), -1, NULL);
 				else
 				{
 					if(mod_q3bsp_sRGBlightmaps.integer)
@@ -5315,7 +5345,7 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 						textype_t t;
 						// in stupid fallback mode, we upload lightmaps in sRGB form and just fix their brightness
 						// we fix the brightness consistently via lightmapscale
-						if(vid_sRGB.integer && vid_sRGB_fallback.integer && !vid.sRGB3D)
+						if((vid_sRGB.integer && vid_sRGB_fallback.integer && !vid.sRGB3D) && !mergedpixels_sRGB)
 							t = TEXTYPE_BGRA; 
 						else
 							t = TEXTYPE_SRGB_BGRA; // normally, we upload lightmaps in sRGB form (possibly downconverted to linear)
@@ -5323,9 +5353,9 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 					}
 					else
 					{
-						if(vid_sRGB.integer && vid_sRGB_fallback.integer && !vid.sRGB3D)
+						if(vid_sRGB.integer && vid_sRGB_fallback.integer && !vid.sRGB3D && !mergedpixels_sRGB)
 							Image_MakesRGBColorsFromLinear_Lightmap(mergedpixels, mergedpixels, mergedwidth * mergedheight);
-						loadmodel->brushq3.data_lightmaps [lightmapindex] = R_LoadTexture2D(loadmodel->texturepool, va(vabuf, sizeof(vabuf), "lightmap%04i", lightmapindex), mergedwidth, mergedheight, mergedpixels, TEXTYPE_BGRA, TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), -1, NULL);
+						loadmodel->brushq3.data_lightmaps [lightmapindex] = R_LoadTexture2D(loadmodel->texturepool, va(vabuf, sizeof(vabuf), "lightmap%04i", lightmapindex), mergedwidth, mergedheight, mergedpixels, mergedpixels_sRGB ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA, TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), -1, NULL);
 					}
 				}
 			}

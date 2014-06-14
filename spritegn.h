@@ -45,11 +45,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // <endrepeat>
 //-------------------------------------------------------
 
-#define SPRITE_VERSION		1
-#define SPRITEHL_VERSION	2
-#define SPRITE32_VERSION	32
-#define SPRITEPACKED_VERSION	128
-#define SPRITEPACKED32_VERSION	160
+#define SPRITE_VERSION 1
+#define SPRITEHL_VERSION 2
+#define SPRITE32_VERSION 32
+#define SPRITEPACKED_VERSION 128
+#define SPRITEPACKED32_VERSION 160
 
 #define SPRITE2_VERSION		2
 

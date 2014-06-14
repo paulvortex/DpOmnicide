@@ -1415,7 +1415,7 @@ static void M_Setup_Draw (void)
 				}
 				menuplyr_translated[i] = palette_bgra_transparent[j];
 			}
-			Draw_NewPic("gfx/menuplyr", menuplyr_width, menuplyr_height, true, (unsigned char *)menuplyr_translated);
+			Draw_NewPic("gfx/menuplyr", menuplyr_width, menuplyr_height, true, (unsigned char *)menuplyr_translated, false);
 		}
 		M_DrawPic(160, 48, "gfx/bigbox");
 		M_DrawPic(172, 56, "gfx/menuplyr");

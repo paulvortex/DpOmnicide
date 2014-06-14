@@ -1052,13 +1052,24 @@ extern void (GLAPIENTRY *qglGetCompressedTexImageARB)(GLenum target, GLint lod, 
 
 // GL_EXT_texture_compression_s3tc
 #ifndef GL_COMPRESSED_RGB_S3TC_DXT1_EXT
-#define GL_COMPRESSED_RGB_S3TC_DXT1_EXT                   0x83F0
-#define GL_COMPRESSED_RGBA_S3TC_DXT1_EXT                  0x83F1
-#define GL_COMPRESSED_RGBA_S3TC_DXT3_EXT                  0x83F2
-#define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT                  0x83F3
+#define GL_COMPRESSED_RGB_S3TC_DXT1_EXT                0x83F0
+#define GL_COMPRESSED_RGBA_S3TC_DXT1_EXT               0x83F1
+#define GL_COMPRESSED_RGBA_S3TC_DXT3_EXT               0x83F2
+#define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT               0x83F3
+#endif
+
+// OES_compressed_ETC1_RGB8_texture
+#ifndef GL_ETC1_RGB8_OES
+#define GL_ETC1_RGB8_OES                               0x8D64
 #endif
 
 // GL_ARB_ES3_compatibility
+// OES_compressed_ETC2_RGB8_texture
+// OES_compressed_ETC2_RGBA8_texture
+// OES_compressed_ETC2_RGBA8_texture
+// OES_compressed_ETC2_sRGB8_texture
+// OES_compressed_ETC2_punchthroughA_sRGB8_alpha_texture
+// OES_compressed_ETC2_sRGB8_alpha8_texture
 #ifndef GL_COMPRESSED_RGB8_ETC2
 #define GL_COMPRESSED_RGB8_ETC2                        0x9274
 #define GL_COMPRESSED_SRGB8_ETC2                       0x9275

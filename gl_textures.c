@@ -38,11 +38,14 @@ cvar_t gl_texturecompression_reflectmask = {CVAR_SAVE, "gl_texturecompression_re
 cvar_t gl_texturecompression_sprites = {CVAR_SAVE, "gl_texturecompression_sprites", "1", "whether to compress sprites"};
 cvar_t gl_nopartialtextureupdates = {CVAR_SAVE, "gl_nopartialtextureupdates", "0", "use alternate path for dynamic lightmap updates that avoids a possibly slow code path in the driver"};
 cvar_t r_texture_dds_load_alphamode = {0, "r_texture_dds_load_alphamode", "1", "0: trust DDPF_ALPHAPIXELS flag, 1: texture format and brute force search if ambiguous, 2: texture format only"};
-cvar_t r_texture_dds_load_avgcolormode = {0, "r_texture_dds_load_avgcolormode", "1", "0: try to load from DDS reserved field, 1: generate average color data from texture"};
+cvar_t r_texture_dds_load_avgcolormode = {0, "r_texture_dds_load_avgcolormode", "1", "0: try to load from DDS reserved field (not part of standart), 1: generate average color data from texture"};
+cvar_t r_texture_dds_load_srgbmode = {0, "r_texture_dds_load_srgbmode", "1", "0: check DDPF_SRGB (0x40000000, not part of standart) flag and set sRGB texture type if found, 1: do not check for sRGB"};
 cvar_t r_texture_dds_load_logfailure = {0, "r_texture_dds_load_logfailure", "0", "log missing DDS textures to ddstexturefailures.log, 0: done log, 1: log with no optional textures (_norm, glow etc.). 2: log all"};
 cvar_t r_texture_dds_load_etc1 = {0, "r_texture_dds_load_etc1", "0", "try load Ericsson Texture Compression (ETC1) compressed DDS files from etc1/ folder before trying default dds/ path, if supported by hardware"};
 cvar_t r_texture_dds_load_etc2 = {0, "r_texture_dds_load_etc2", "0", "try load Ericsson Texture Compression 2 (ETC2) compressed DDS files from etc2/ folder before trying default dds/ path, if supported by hardware"};
 cvar_t r_texture_dds_swdecode = {0, "r_texture_dds_swdecode", "0", "0: don't software decode DDS, 1: software decode DDS if unsupported, 2: always software decode DDS"};
+extern cvar_t r_texture_png_iccmode;
+extern cvar_t r_texture_jpeg_iccmode;
 
 qboolean	gl_filter_force = false;
 int		gl_filter_min = GL_LINEAR_MIPMAP_LINEAR;
@@ -111,7 +114,15 @@ static textypeinfo_t textype_rgba_alpha                  = {"rgba_alpha",       
 static textypeinfo_t textype_bgra                        = {"bgra",                     TEXTYPE_BGRA          ,  4,  4,  4.0f, GL_RGBA                               , GL_BGRA           , GL_UNSIGNED_BYTE };
 static textypeinfo_t textype_bgra_alpha                  = {"bgra_alpha",               TEXTYPE_BGRA          ,  4,  4,  4.0f, GL_RGBA                               , GL_BGRA           , GL_UNSIGNED_BYTE };
 #ifdef __ANDROID__
-static textypeinfo_t textype_etc1                        = {"etc1",                     TEXTYPE_ETC1          ,  1,  3,  0.5f, GL_ETC1_RGB8_OES                         , 0                 , 0                };
+static textypeinfo_t textype_etc1                        = {"etc1",                     TEXTYPE_ETC1          ,  3,  0,  0.5f, GL_ETC1_RGB8_OES                      , GL_RGB            , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_etc2rgb                     = {"etc2rgb",                  TEXTYPE_ETC2RGB       ,  3,  0,  0.5f, GL_COMPRESSED_RGB8_ETC2               , GL_RGB            , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_etc2rgba                    = {"etc2rgba",                 TEXTYPE_ETC2RGBA      ,  4,  0,  1.0f, GL_COMPRESSED_RGBA8_ETC2_EAC          , GL_RGBA           , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_etc2rgba1                   = {"etc2rgba1",                TEXTYPE_ETC2RGBA1     ,  4,  0,  0.5f, GL_COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2, GL_RGBA      , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_etc2r                       = {"etc2r",                    TEXTYPE_ETC2R         ,  1,  0,  0.5f, GL_COMPRESSED_R11_EAC                 , GL_RED            , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_etc2rg                      = {"etc2rg",                   TEXTYPE_ETC2RG        ,  2,  0,  1.0f, GL_COMPRESSED_RG11_EAC                , GL_RG             , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_sRGB_etc2rgb                = {"sRGB_etc2rgb",             TEXTYPE_ETC2RGB       ,  3,  0,  0.5f, GL_COMPRESSED_SRGB8_ETC2              , 0                 , 0 };
+static textypeinfo_t textype_sRGB_etc2rgba               = {"sRGB_etc2rgba",            TEXTYPE_ETC2RGBA      ,  4,  0,  1.0f, GL_COMPRESSED_SRGB8_ALPHA8_ETC2_EAC   , 0                 , 0 };
+static textypeinfo_t textype_sRGB_etc2rgba1              = {"sRGB_etc2rgba1",           TEXTYPE_ETC2RGBA1     ,  4,  0,  0.5f, GL_COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2, 0           , 0 };
 #endif
 #else
 // framebuffer texture formats
@@ -158,6 +169,7 @@ static textypeinfo_t textype_sRGB_dxt1                   = {"sRGB_dxt1",        
 static textypeinfo_t textype_sRGB_dxt1a                  = {"sRGB_dxt1a",               TEXTYPE_DXT1A         ,  4,  0,  0.5f, GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT, 0                 , 0                };
 static textypeinfo_t textype_sRGB_dxt3                   = {"sRGB_dxt3",                TEXTYPE_DXT3          ,  4,  0,  1.0f, GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT, 0                 , 0                };
 static textypeinfo_t textype_sRGB_dxt5                   = {"sRGB_dxt5",                TEXTYPE_DXT5          ,  4,  0,  1.0f, GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT, 0                 , 0                };
+static textypeinfo_t textype_etc1                        = {"etc1",                     TEXTYPE_ETC1          ,  3,  0,  0.5f, GL_ETC1_RGB8_OES                      , GL_RGB            , GL_UNSIGNED_BYTE };
 static textypeinfo_t textype_etc2rgb                     = {"etc2rgb",                  TEXTYPE_ETC2RGB       ,  3,  0,  0.5f, GL_COMPRESSED_RGB8_ETC2               , GL_RGB            , GL_UNSIGNED_BYTE };
 static textypeinfo_t textype_etc2rgba                    = {"etc2rgba",                 TEXTYPE_ETC2RGBA      ,  4,  0,  1.0f, GL_COMPRESSED_RGBA8_ETC2_EAC          , GL_RGBA           , GL_UNSIGNED_BYTE };
 static textypeinfo_t textype_etc2rgba1                   = {"etc2rgba1",                TEXTYPE_ETC2RGBA1     ,  4,  0,  0.5f, GL_COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2, GL_RGBA      , GL_UNSIGNED_BYTE };
@@ -297,6 +309,12 @@ static textypeinfo_t *R_GetTexTypeInfo(textype_t textype, int flags)
 	case TEXTYPE_BGRA: return ((flags & TEXF_ALPHA) ? &textype_bgra_alpha : &textype_bgra);
 #ifdef __ANDROID__
 	case TEXTYPE_ETC1: return &textype_etc1;
+	case TEXTYPE_ETC2RGB: return &textype_etc2rgb;
+	case TEXTYPE_ETC2RGBA1: return &textype_etc2rgba1;
+	case TEXTYPE_ETC2RGBA: return &textype_etc2rgba;
+	case TEXTYPE_SRGB_ETC2RGB: return &textype_sRGB_etc2rgb;
+	case TEXTYPE_SRGB_ETC2RGBA1: return &textype_sRGB_etc2rgba1;
+	case TEXTYPE_SRGB_ETC2RGBA: return &textype_sRGB_etc2rgba;
 #endif
 	case TEXTYPE_ALPHA: return &textype_alpha;
 	case TEXTYPE_COLORBUFFER: return &textype_colorbuffer;
@@ -316,6 +334,7 @@ static textypeinfo_t *R_GetTexTypeInfo(textype_t textype, int flags)
 	case TEXTYPE_DXT5: return &textype_dxt5;
 	case TEXTYPE_DXT5_YCG2: return &textype_dxt5_ycg2;
 	case TEXTYPE_DXT5_YCG4: return &textype_dxt5_ycg4;
+	case TEXTYPE_ETC1: return &textype_etc1;
 	case TEXTYPE_ETC2RGB: return &textype_etc2rgb;
 	case TEXTYPE_ETC2RGBA1: return &textype_etc2rgba1;
 	case TEXTYPE_ETC2RGBA: return &textype_etc2rgba;
@@ -1008,10 +1027,13 @@ void R_Textures_Init (void)
 	Cvar_RegisterVariable (&gl_nopartialtextureupdates);
 	Cvar_RegisterVariable (&r_texture_dds_load_alphamode);
 	Cvar_RegisterVariable (&r_texture_dds_load_avgcolormode);
+	Cvar_RegisterVariable (&r_texture_dds_load_srgbmode);
 	Cvar_RegisterVariable (&r_texture_dds_load_logfailure);
 	Cvar_RegisterVariable (&r_texture_dds_load_etc1);
 	Cvar_RegisterVariable (&r_texture_dds_load_etc2);
 	Cvar_RegisterVariable (&r_texture_dds_swdecode);
+	Cvar_RegisterVariable (&r_texture_png_iccmode);
+	Cvar_RegisterVariable (&r_texture_jpeg_iccmode);
 
 	R_RegisterModule("R_Textures", r_textures_start, r_textures_shutdown, r_textures_newmap, r_textures_devicelost, r_textures_devicerestored);
 }
@@ -2226,6 +2248,137 @@ int R_SaveTextureDDSFile(rtexture_t *rt, const char *filename, qboolean skipunco
 #include "ktx10/include/ktx.h"
 #endif
 
+// bool R_CheckDDSFile(unsigned char *, fs_offset_t)
+// check DDS file and retrieve texture type
+qboolean R_CheckDDSFile(char *filename, unsigned char *dds, fs_offset_t ddsfilesize, textype_t *textype)
+{
+	unsigned char *fourcc;
+	int formatflags;
+	qboolean sRGB;
+
+	// check header and file size
+	if (ddsfilesize <= 128)
+	{
+		Con_Printf("^1%s: not a DDS image (filesize %i)\n", filename, ddsfilesize);
+		return false;
+	}
+	if (memcmp(dds, "DDS ", 4) || ddsfilesize < (unsigned int)BuffLittleLong(dds+4) || BuffLittleLong(dds+76) != 32)
+	{
+		Con_Printf("^1%s: not a DDS image (filesize %i, fourCC '%c%c%c%c')\n", filename, ddsfilesize, dds, dds+1, dds+2, dds+3);
+		return false;
+	}
+
+	// get texture type
+	fourcc = dds+84;
+	formatflags = BuffLittleLong(dds+80);
+	sRGB = (r_texture_dds_load_srgbmode.integer == 0 && (formatflags & 0x40000000)) ? true : false; // 0x40000000 - sRGB colorspace flag
+
+	if ((formatflags & 0x40) && BuffLittleLong(dds+88) == 32) 
+	{
+		// very sloppy BGRA 32bit identification
+		*textype = sRGB ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA;
+		return true;
+	}
+	if (!memcmp(fourcc, "DXT1", 4))
+	{
+		*textype = sRGB ? TEXTYPE_SRGB_DXT1 : TEXTYPE_DXT1;
+		return true;
+	}
+	if (!memcmp(fourcc, "DXT3", 4) || !memcmp(fourcc, "DXT2", 4))
+	{
+		*textype = sRGB ? TEXTYPE_SRGB_DXT3 : TEXTYPE_DXT3;
+		return true;
+	}
+	if (!memcmp(fourcc, "DXT5", 4) || !memcmp(fourcc, "DXT4", 4))
+	{
+		// YCoCgS Swizzled DXT5 format
+		if (!memcmp(dds+44, "YCG2", 4))
+			*textype = TEXTYPE_DXT5_YCG2;
+		else if (!memcmp(dds+44, "YCG4", 4))
+			*textype = TEXTYPE_DXT5_YCG4;
+		else
+			*textype = sRGB ? TEXTYPE_SRGB_DXT5 : TEXTYPE_DXT5;
+		return true;
+	}
+	if (!memcmp(fourcc, "ETC1", 4))
+	{
+		if (vid.support.oes_compressed_etc2_rgb8_texture)
+			*textype = TEXTYPE_ETC2RGB;
+		else
+			*textype = TEXTYPE_ETC1;
+		return true;
+	}
+	if (!memcmp(fourcc, "ETC2", 4))
+	{
+		*textype = sRGB ? TEXTYPE_SRGB_ETC2RGB : TEXTYPE_ETC2RGB;
+		return true;
+	}
+	if (!memcmp(fourcc, "ETCP", 4))
+	{
+		*textype = sRGB ? TEXTYPE_SRGB_ETC2RGBA1 : TEXTYPE_ETC2RGBA1;
+		return true;
+	}
+	if (!memcmp(fourcc, "ETCA", 4))
+	{
+		*textype = sRGB ? TEXTYPE_SRGB_ETC2RGBA : TEXTYPE_ETC2RGBA;
+		return true;
+	}
+	// unrecognized texture type
+	Con_Printf("^1%s: unrecognized/unsupported DDS format (pixelformatflags %i, fourCC '%c%c%c%c')\n", filename, formatflags, fourcc, fourcc+1, fourcc+2, fourcc+3);
+	return false;
+}
+
+// bool R_TexTypeSupported(textype_t)
+// returns whether texture type is supported by hardware
+qboolean R_TexTypeSupported(textype_t textype)
+{
+	qboolean supported;
+
+	switch(textype)
+	{
+		case TEXTYPE_DXT1:
+		case TEXTYPE_DXT1A:
+		case TEXTYPE_DXT3:
+		case TEXTYPE_DXT5:
+		case TEXTYPE_DXT5_YCG2:
+		case TEXTYPE_DXT5_YCG4:
+			supported = vid.support.arb_texture_compression && vid.support.ext_texture_compression_s3tc;
+			break;
+		case TEXTYPE_SRGB_DXT1:
+		case TEXTYPE_SRGB_DXT1A:
+		case TEXTYPE_SRGB_DXT3:
+		case TEXTYPE_SRGB_DXT5:
+			supported = vid.support.ext_texture_srgb && vid.support.arb_texture_compression && vid.support.ext_texture_compression_s3tc;
+			break;
+		case TEXTYPE_ETC1:
+			supported = vid.support.oes_compressed_etc1_rgb8_texture;
+			break;
+		case TEXTYPE_ETC2RGB:
+			supported = vid.support.oes_compressed_etc2_rgb8_texture;
+			break;
+		case TEXTYPE_ETC2RGBA1:
+			supported = vid.support.oes_compressed_etc2_punchthrougha_rgba8_texture;
+			break;
+		case TEXTYPE_ETC2RGBA:
+			supported = vid.support.oes_compressed_etc2_rgba8_texture;
+			break;
+		case TEXTYPE_SRGB_ETC2RGB:
+			supported = vid.support.oes_compressed_etc2_srgb8_texture;
+			break;
+		case TEXTYPE_SRGB_ETC2RGBA1:
+			supported = vid.support.oes_compressed_etc2_punchthrougha_srgb8_alpha_texture;
+			break;
+		case TEXTYPE_SRGB_ETC2RGBA:
+			supported = vid.support.oes_compressed_etc2_srgb8_alpha8_texture;
+			break;
+		default:
+			// all other types are must-have
+			supported = true;
+			break;
+	}
+	return supported;
+}
+
 rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *basename, const char *suffix, qboolean convert_srgb, int flags, qboolean *hasalphaflag, float *avgcolor, int miplevel, qboolean optionaltexture) // DDS textures are opaque, so miplevel isn't a pointer but just seen as a hint
 {
 	int i, size, dds_format_flags, dds_miplevels, dds_width, dds_height;
@@ -2243,10 +2396,11 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *basen
 	unsigned char *mippixels_start;
 	unsigned char *ddspixels;
 	unsigned char *dds;
-	unsigned char *fourCC;
+	unsigned char *dds_format_fourcc;
 	fs_offset_t ddsfilesize;
 	unsigned int ddssize;
 	qboolean force_swdecode, npothack;
+	qboolean blockalphaseparate;
 #ifdef __ANDROID__
 	// ELUAN: FIXME: separate this code
 	char vabuf[1024];
@@ -2399,49 +2553,92 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *basen
 	}
 #endif // __ANDROID__
 
-	// load DDS file
+	// try load ETC2 DDS file from separate etc2/ folder if supported by hardware
 	dds = NULL;
 	filename = NULL;
 	ddsfilesize = 0;
 	ddssize = 0;
-	if (vid.support.arb_es3_compatibility && r_texture_dds_load_etc2.integer >= 1)
+	textype = TEXTYPE_BGRA; // hush a warning
+	if (vid.support.arb_es3_compatibility_etc2_partial && r_texture_dds_load_etc2.integer >= 1)
 	{
-		// try load ETC2 file from separate folder if supported by hardware
 		filename = va(vabuf, sizeof(vabuf), "etc2/%s%s.dds", basename, (suffix == NULL) ? "" : suffix);
 		dds = FS_LoadFile(filename, tempmempool, true, &ddsfilesize);
 		ddssize = ddsfilesize;
+		if (dds)
+		{
+			// check header, check if texture type can be detemined
+			if (!R_CheckDDSFile(filename, dds, ddsfilesize, &textype))
+			{
+				Mem_Free(dds);
+				dds = NULL;
+				ddsfilesize = 0;
+				ddssize = 0;
+			}
+			// check if textype is supported by hardware
+			if (!R_TexTypeSupported(textype))
+			{
+				Mem_Free(dds);
+				dds = NULL;
+				ddsfilesize = ddssize = 0;
+			}
+		}
 	}
-	if (vid.support.arb_es3_compatibility && r_texture_dds_load_etc1.integer >= 1)
+
+	// try load ETC1 DDS file from separate etc1/ folder if supported by hardware
+	if ((vid.support.oes_compressed_etc2_rgb8_texture || vid.support.oes_compressed_etc1_rgb8_texture) && r_texture_dds_load_etc1.integer >= 1)
 	{
-		// try load ETC1 file from separate folder if supported by hardware
 		filename = va(vabuf, sizeof(vabuf), "etc1/%s%s.dds", basename, (suffix == NULL) ? "" : suffix);
 		dds = FS_LoadFile(filename, tempmempool, true, &ddsfilesize);
 		ddssize = ddsfilesize;
+		if (dds)
+		{
+			// check header, check if texture type can be detemined
+			if (!R_CheckDDSFile(filename, dds, ddsfilesize, &textype))
+			{
+				if (dds)
+					Mem_Free(dds);
+				dds = NULL;
+				ddsfilesize = 0;
+				ddssize = 0;
+			}
+			// check if textype is supported by hardware
+			if (!R_TexTypeSupported(textype))
+			{
+				Mem_Free(dds);
+				dds = NULL;
+				ddsfilesize = ddssize = 0;
+			}
+		}
 	}
+
+	// load default DDS file
 	if (!dds)
 	{
-		// load default DDS file
 		filename = va(vabuf, sizeof(vabuf), "dds/%s%s.dds", basename, (suffix == NULL) ? "" : suffix);
 		dds = FS_LoadFile(filename, tempmempool, true, &ddsfilesize);
 		ddssize = ddsfilesize;
-	}
-	if (!dds)
-	{
-		// failed to load any DDS
-		if (r_texture_dds_load_logfailure.integer && (r_texture_dds_load_logfailure.integer >= 2 || !optionaltexture))
-			Log_Printf("ddstexturefailures.log", "%s\n", filename);
-		return NULL; // not found
-	}
-
-	// check header
-	if (ddsfilesize <= 128 || memcmp(dds, "DDS ", 4) || ddssize < (unsigned int)BuffLittleLong(dds+4) || BuffLittleLong(dds+76) != 32)
-	{
-		Mem_Free(dds);
-		Con_Printf("^1%s: not a DDS image\n", filename);
-		return NULL;
+		if (dds)
+		{
+			// check header, check if texture type is supported
+			if (!R_CheckDDSFile(filename, dds, ddsfilesize, &textype))
+			{
+				Mem_Free(dds);
+				dds = NULL;
+				ddsfilesize = 0;
+				ddssize = 0;
+			}
+		}
+		else
+		{
+			// failed to load any DDS
+			if (r_texture_dds_load_logfailure.integer && (r_texture_dds_load_logfailure.integer >= 2 || !optionaltexture))
+				Log_Printf("ddstexturefailures.log", "%s\n", filename);
+			return NULL; // not found
+		}
 	}
 
 	dds_format_flags = BuffLittleLong(dds+80);
+	dds_format_fourcc = dds+84;
 	dds_miplevels = (BuffLittleLong(dds+108) & 0x400000) ? BuffLittleLong(dds+28) : 1;
 	dds_width = BuffLittleLong(dds+16);
 	dds_height = BuffLittleLong(dds+12);
@@ -2451,13 +2648,13 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *basen
 		if(!(dds_format_flags & 0x1)) // DDPF_ALPHAPIXELS
 			flags &= ~TEXF_ALPHA;
 
-	fourCC = dds+84;
-	if ((dds_format_flags & 0x40) && BuffLittleLong(dds+88) == 32)
+	// thoroughly check texture type
+	bytesperblock = 0;
+	bytesperpixel = 0;
+	blockalphaseparate = false;
+	if (textype == TEXTYPE_BGRA || textype == TEXTYPE_SRGB_BGRA)
 	{
-		// very sloppy BGRA 32bit identification
-		textype = (dds_format_flags & 0x40000000) ? TEXTYPE_SRGB_BGRA : TEXTYPE_BGRA; // 0x40000000 - sRGB colorspace flag
 		flags &= ~TEXF_COMPRESS; // don't let the textype be wrong
-		bytesperblock = 0;
 		bytesperpixel = 4;
 		size = INTOVERFLOW_MUL(INTOVERFLOW_MUL(dds_width, dds_height), bytesperpixel);
 		if(INTOVERFLOW_ADD(128, size) > INTOVERFLOW_NORMALIZE(ddsfilesize))
@@ -2476,14 +2673,12 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *basen
 				flags &= ~TEXF_ALPHA;
 		}
 	}
-	else if (!memcmp(fourCC, "DXT1", 4))
+	else if (textype == TEXTYPE_DXT1 || textype == TEXTYPE_SRGB_DXT1)
 	{
 		// we need to find out if this is DXT1 (opaque) or DXT1A (transparent)
 		// LordHavoc: it is my belief that this does not infringe on the
 		// patent because it is not decoding pixels...
-		textype = (dds_format_flags & 0x40000000) ? TEXTYPE_SRGB_DXT1 : TEXTYPE_DXT1; // 0x40000000 - sRGB colorspace flag
 		bytesperblock = 8;
-		bytesperpixel = 0;
 		//size = ((dds_width+3)/4)*((dds_height+3)/4)*bytesperblock;
 		size = INTOVERFLOW_MUL(INTOVERFLOW_MUL(INTOVERFLOW_DIV(INTOVERFLOW_ADD(dds_width, 3), 4), INTOVERFLOW_DIV(INTOVERFLOW_ADD(dds_height, 3), 4)), bytesperblock);
 		if(INTOVERFLOW_ADD(128, size) > INTOVERFLOW_NORMALIZE(ddsfilesize))
@@ -2507,37 +2702,27 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *basen
 							break;
 					}
 				if (i < size)
-					textype = (dds_format_flags & 0x40000000) ? TEXTYPE_SRGB_DXT1A : TEXTYPE_DXT1A; // 0x40000000 - sRGB colorspace flag
+					textype = (textype == TEXTYPE_SRGB_DXT1) ? TEXTYPE_SRGB_DXT1A : TEXTYPE_DXT1A;
 				else
 					flags &= ~TEXF_ALPHA;
 			}
 			else if (r_texture_dds_load_alphamode.integer == 0)
-				textype = (dds_format_flags & 0x40000000) ? TEXTYPE_SRGB_DXT1A : TEXTYPE_DXT1A; // 0x40000000 - sRGB colorspace flag
+				textype = (textype == TEXTYPE_SRGB_DXT1) ? TEXTYPE_SRGB_DXT1A : TEXTYPE_DXT1A;
 			else
-			{
 				flags &= ~TEXF_ALPHA;
-			}
 		}
 	}
-	else if (!memcmp(fourCC, "DXT3", 4) || !memcmp(fourCC, "DXT2", 4))
+	else if (textype == TEXTYPE_DXT3 || textype == TEXTYPE_SRGB_DXT3)
 	{
-		if(!memcmp(fourCC, "DXT2", 4))
+		if(!memcmp(dds+84, "DXT2", 4))
 		{
 			if(!(flags & TEXF_RGBMULTIPLYBYALPHA))
-			{
 				Con_Printf("^1%s: expecting DXT3 image without premultiplied alpha, got DXT2 image with premultiplied alpha\n", filename);
-			}
 		}
-		else
-		{
-			if(flags & TEXF_RGBMULTIPLYBYALPHA)
-			{
-				Con_Printf("^1%s: expecting DXT2 image without premultiplied alpha, got DXT3 image without premultiplied alpha\n", filename);
-			}
-		}
-		textype = (dds_format_flags & 0x40000000) ? TEXTYPE_SRGB_DXT3 : TEXTYPE_DXT3; // 0x40000000 - sRGB colorspace flag
+		else if(flags & TEXF_RGBMULTIPLYBYALPHA)
+			Con_Printf("^1%s: expecting DXT2 image without premultiplied alpha, got DXT3 image without premultiplied alpha\n", filename);
 		bytesperblock = 16;
-		bytesperpixel = 0;
+		blockalphaseparate = true;
 		size = INTOVERFLOW_MUL(INTOVERFLOW_MUL(INTOVERFLOW_DIV(INTOVERFLOW_ADD(dds_width, 3), 4), INTOVERFLOW_DIV(INTOVERFLOW_ADD(dds_height, 3), 4)), bytesperblock);
 		if(INTOVERFLOW_ADD(128, size) > INTOVERFLOW_NORMALIZE(ddsfilesize))
 		{
@@ -2547,37 +2732,19 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *basen
 		}
 		// we currently always assume alpha
 	}
-	else if (!memcmp(fourCC, "DXT5", 4) || !memcmp(fourCC, "DXT4", 4))
+	else if (textype == TEXTYPE_DXT5 || textype == TEXTYPE_SRGB_DXT5 || textype == TEXTYPE_DXT5_YCG2 || textype == TEXTYPE_DXT5_YCG4)
 	{
-		if(!memcmp(fourCC, "DXT4", 4))
+		if(!memcmp(dds+84, "DXT4", 4))
 		{
 			if(!(flags & TEXF_RGBMULTIPLYBYALPHA))
-			{
 				Con_Printf("^1%s: expecting DXT5 image without premultiplied alpha, got DXT4 image with premultiplied alpha\n", filename);
-			}
 		}
-		else
-		{
-			if(flags & TEXF_RGBMULTIPLYBYALPHA)
-			{
-				Con_Printf("^1%s: expecting DXT4 image without premultiplied alpha, got DXT5 image without premultiplied alpha\n", filename);
-			}
-		}
-		// vortex: detect YCoCg Scaled Swizzled format
-		if (!memcmp(dds+44, "YCG2", 4))
-		{
-			textype = TEXTYPE_DXT5_YCG2;
+		else if(flags & TEXF_RGBMULTIPLYBYALPHA)
+			Con_Printf("^1%s: expecting DXT4 image without premultiplied alpha, got DXT5 image without premultiplied alpha\n", filename);
+		if (textype == TEXTYPE_DXT5_YCG2 || textype == TEXTYPE_DXT5_YCG4)
 			flags |= TEXF_ALPHA; // YCoCg Scaled DDS files may have no alpha flag, as unswizzled texture doesn't contain alpha by itself
-		}
-		else if (!memcmp(dds+44, "YCG4", 4))
-		{
-			textype = TEXTYPE_DXT5_YCG4;
-			flags |= TEXF_ALPHA; // YCoCg Scaled Gamma 2.0 DDS files may have no alpha flag, as unswizzled texture doesn't contain alpha by itself
-		}
-		else
-			textype = (dds_format_flags & 0x40000000) ? TEXTYPE_SRGB_DXT5 : TEXTYPE_DXT5; // 0x40000000 - sRGB colorspace flag
 		bytesperblock = 16;
-		bytesperpixel = 0;
+		blockalphaseparate = true;
 		size = INTOVERFLOW_MUL(INTOVERFLOW_MUL(INTOVERFLOW_DIV(INTOVERFLOW_ADD(dds_width, 3), 4), INTOVERFLOW_DIV(INTOVERFLOW_ADD(dds_height, 3), 4)), bytesperblock);
 		if(INTOVERFLOW_ADD(128, size) > INTOVERFLOW_NORMALIZE(ddsfilesize))
 		{
@@ -2587,63 +2754,45 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *basen
 		}
 		// we currently always assume alpha
 	}
-	else if (!memcmp(fourCC, "ETC1", 4) || !memcmp(fourCC, "ETC2", 4))
+	else if (textype == TEXTYPE_ETC1 || textype == TEXTYPE_ETC2RGB || textype == TEXTYPE_SRGB_ETC2RGB || textype == TEXTYPE_ETC2RGBA1 || textype == TEXTYPE_SRGB_ETC2RGBA1)
 	{
-		// todo: use oes_compressed_etc1_rgb8 texture for ETC1
-		textype = (dds_format_flags & 0x40000000) ? TEXTYPE_SRGB_ETC2RGB : TEXTYPE_ETC2RGB; // 0x40000000 - sRGB colorspace flag
 		bytesperblock = 8;
-		bytesperpixel = 0;
 		size = INTOVERFLOW_MUL(INTOVERFLOW_MUL(INTOVERFLOW_DIV(INTOVERFLOW_ADD(dds_width, 3), 4), INTOVERFLOW_DIV(INTOVERFLOW_ADD(dds_height, 3), 4)), bytesperblock);
 		if(INTOVERFLOW_ADD(128, size) > INTOVERFLOW_NORMALIZE(ddsfilesize))
 		{
 			Mem_Free(dds);
-			Con_Printf("^1%s: invalid ETC image\n", filename);
+			Con_Printf("^1%s: invalid ETC1/ETC2 image\n", filename);
 			return NULL;
 		}
-		flags &= ~TEXF_ALPHA;
+		if (textype == TEXTYPE_ETC2RGBA1 || textype == TEXTYPE_SRGB_ETC2RGBA)
+			flags |= TEXF_ALPHA;
+		else
+			flags &= ~TEXF_ALPHA;
 	}
-	else if (!memcmp(fourCC, "ETCP", 4))
+	else if (textype == TEXTYPE_ETC2RGBA || textype == TEXTYPE_SRGB_ETC2RGBA)
 	{
-		textype = (dds_format_flags & 0x40000000) ? TEXTYPE_SRGB_ETC2RGBA1 : TEXTYPE_ETC2RGBA1; // 0x40000000 - sRGB colorspace flag
-		bytesperblock = 8;
-		bytesperpixel = 0;
-		size = INTOVERFLOW_MUL(INTOVERFLOW_MUL(INTOVERFLOW_DIV(INTOVERFLOW_ADD(dds_width, 3), 4), INTOVERFLOW_DIV(INTOVERFLOW_ADD(dds_height, 3), 4)), bytesperblock);
-		if(INTOVERFLOW_ADD(128, size) > INTOVERFLOW_NORMALIZE(ddsfilesize))
-		{
-			Mem_Free(dds);
-			Con_Printf("^1%s: invalid ETC2 RGBA1 DDS image\n", filename);
-			return NULL;
-		}
-		// always assume alpha
-		flags |= TEXF_ALPHA;
-	}
-	else if (!memcmp(fourCC, "ETCA", 4))
-	{
-		textype = (dds_format_flags & 0x40000000) ? TEXTYPE_SRGB_ETC2RGBA : TEXTYPE_ETC2RGBA; // 0x40000000 - sRGB colorspace flag
 		bytesperblock = 16;
-		bytesperpixel = 0;
+		blockalphaseparate = true;
 		size = INTOVERFLOW_MUL(INTOVERFLOW_MUL(INTOVERFLOW_DIV(INTOVERFLOW_ADD(dds_width, 3), 4), INTOVERFLOW_DIV(INTOVERFLOW_ADD(dds_height, 3), 4)), bytesperblock);
 		if(INTOVERFLOW_ADD(128, size) > INTOVERFLOW_NORMALIZE(ddsfilesize))
 		{
 			Mem_Free(dds);
-			Con_Printf("^1%s: invalid ETC2 RGBA DDS image\n", filename);
+			Con_Printf("^1%s: invalid ETC2 RGBA image\n", filename);
 			return NULL;
 		}
 		// always assume alpha
 		flags |= TEXF_ALPHA;
-	}
-	else
-	{
-		Mem_Free(dds);
-		Con_Printf("^1%s: unrecognized/unsupported DDS format (fourCC '%c%c%c%c')\n", filename, fourCC, fourCC+1, fourCC+2, fourCC+3);
-		return NULL;
 	}
 
-	// when requesting a non-alpha texture and we have DXT3/5, convert to DXT1
-	if(!(flags & TEXF_ALPHA) && (textype == TEXTYPE_DXT3 || textype == TEXTYPE_SRGB_DXT3 || textype == TEXTYPE_DXT5 || textype == TEXTYPE_SRGB_DXT5 || textype == TEXTYPE_DXT5_YCG2 || textype == TEXTYPE_DXT5_YCG4))
+	// when requesting a non-alpha texture and we have DXT3,DXT5/ETC2RGBA, convert to DXT1/ETC2
+	if(blockalphaseparate && bytesperblock == 16 && !(flags & TEXF_ALPHA))
 	{
 		if (textype == TEXTYPE_SRGB_DXT3 || textype == TEXTYPE_SRGB_DXT5)
 			textype = TEXTYPE_SRGB_DXT1;
+		else if (textype == TEXTYPE_SRGB_ETC2RGBA)
+			textype = TEXTYPE_SRGB_ETC2RGB;
+		else if (textype == TEXTYPE_ETC2RGBA)
+			textype = TEXTYPE_ETC2RGB;
 		else
 			textype = TEXTYPE_DXT1;
 		bytesperblock = 8;
@@ -2654,39 +2803,57 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *basen
 		ddssize += 128;
 	}
 
-	// check if need software decode
+	// check if texture format is supported (we need software decode otherwise)
 	force_swdecode = false;
 	npothack = (!vid.support.arb_texture_non_power_of_two && ((dds_width & (dds_width - 1)) || (dds_height & (dds_height - 1)) ));
 	if(bytesperblock)
 	{
-		if ((textype == TEXTYPE_ETC2RGB || textype == TEXTYPE_ETC2RGBA || textype == TEXTYPE_ETC2RGB))
+		qboolean supported = true;
+		switch(textype)
 		{
-			if (!vid.support.arb_es3_compatibility || npothack)
-			{
-				if(r_texture_dds_swdecode.integer >= 1)
-					force_swdecode = true;
-				else
-				{
-					// unsupported
-					Mem_Free(dds);
-					return NULL;
-				}
-			}
+			case TEXTYPE_ETC2RGB:
+				supported = vid.support.oes_compressed_etc2_rgb8_texture;
+				break;
+			case TEXTYPE_ETC2RGBA1:
+				supported = vid.support.oes_compressed_etc2_punchthrougha_rgba8_texture;
+				break;
+			case TEXTYPE_ETC2RGBA:
+				supported = vid.support.oes_compressed_etc2_rgba8_texture;
+				break;
+			case TEXTYPE_SRGB_ETC2RGB:
+				supported = vid.support.oes_compressed_etc2_srgb8_texture;
+				break;
+			case TEXTYPE_SRGB_ETC2RGBA1:
+				supported = vid.support.oes_compressed_etc2_punchthrougha_srgb8_alpha_texture;
+				break;
+			case TEXTYPE_SRGB_ETC2RGBA:
+				supported = vid.support.oes_compressed_etc2_srgb8_alpha8_texture;
+				break;
+			case TEXTYPE_DXT1:
+			case TEXTYPE_DXT1A:
+			case TEXTYPE_DXT3:
+			case TEXTYPE_DXT5:
+			case TEXTYPE_DXT5_YCG2:
+			case TEXTYPE_DXT5_YCG4:
+				supported = vid.support.arb_texture_compression && vid.support.ext_texture_compression_s3tc;
+				break;
+			case TEXTYPE_SRGB_DXT1:
+			case TEXTYPE_SRGB_DXT1A:
+			case TEXTYPE_SRGB_DXT3:
+			case TEXTYPE_SRGB_DXT5:
+				supported = vid.support.ext_texture_srgb && vid.support.arb_texture_compression && vid.support.ext_texture_compression_s3tc;
+				break;
 		}
-		else if(vid.support.arb_texture_compression && vid.support.ext_texture_compression_s3tc && !npothack)
+		if (!supported || npothack || r_texture_dds_swdecode.integer > 1)
 		{
-			if(r_texture_dds_swdecode.integer > 1)
+			if(r_texture_dds_swdecode.integer >= 1)
 				force_swdecode = true;
-		}
-		else
-		{
-			if(r_texture_dds_swdecode.integer < 1)
+			else
 			{
 				// unsupported
 				Mem_Free(dds);
 				return NULL;
 			}
-			force_swdecode = true;
 		}
 	}
 
