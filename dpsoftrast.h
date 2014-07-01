@@ -149,14 +149,14 @@ typedef enum shadermode_e
 	SHADERMODE_VERTEXCOLOR, ///< (lightmap) modulate texture by vertex colors (q3bsp)
 	SHADERMODE_LIGHTMAP, ///< (lightmap) modulate texture by lightmap texture (q1bsp, q3bsp)
 	SHADERMODE_LIGHTMAP_YCG2, ///< (lightmap) unswizzle YCoCg Scaled texture
-	SHADERMODE_LIGHTMAP_YCG4, ///< (lightmap) unswizzle YCoCg Scaled Gamma 2.0 texture
+	SHADERMODE_LIGHTMAP_YCG2SRGB, ///< (lightmap) unswizzle YCoCg Scaled Gamma 2.0 texture
 	SHADERMODE_FAKELIGHT, ///< (fakelight) modulate texture by "fake" lighting (no lightmaps, no nothing)
 	SHADERMODE_LIGHTDIRECTIONMAP_MODELSPACE, ///< (lightmap) use directional pixel shading from texture containing modelspace light directions (q3bsp deluxemap)
 	SHADERMODE_LIGHTDIRECTIONMAP_MODELSPACE_YCG2, ///< (lightmap) unswizzle YCoCg Scaled deluxemap
-	SHADERMODE_LIGHTDIRECTIONMAP_MODELSPACE_YCG4, ///< (lightmap) unswizzle YCoCg Scaled Gamma 2.0 deluxemap
+	SHADERMODE_LIGHTDIRECTIONMAP_MODELSPACE_YCG2SRGB, ///< (lightmap) unswizzle YCoCg Scaled Gamma 2.0 deluxemap
 	SHADERMODE_LIGHTDIRECTIONMAP_TANGENTSPACE, ///< (lightmap) use directional pixel shading from texture containing tangentspace light directions (q1bsp deluxemap)
 	SHADERMODE_LIGHTDIRECTIONMAP_TANGENTSPACE_YCG2, ///< (lightmap) unswizzle YCoCg Scaled deluxemap
-	SHADERMODE_LIGHTDIRECTIONMAP_TANGENTSPACE_YCG4, ///< (lightmap) unswizzle YCoCg Scaled Gamma 2.0 deluxemap
+	SHADERMODE_LIGHTDIRECTIONMAP_TANGENTSPACE_YCG2SRGB, ///< (lightmap) unswizzle YCoCg Scaled Gamma 2.0 deluxemap
 	SHADERMODE_LIGHTDIRECTIONMAP_FORCED_LIGHTMAP, // forced deluxemapping for lightmapped surfaces
 	SHADERMODE_LIGHTDIRECTIONMAP_FORCED_VERTEXCOLOR, // forced deluxemapping for vertexlit surfaces
 	SHADERMODE_LIGHTDIRECTION, ///< (lightmap) use directional pixel shading from fixed light direction (q3bsp)

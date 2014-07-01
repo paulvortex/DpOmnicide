@@ -704,14 +704,14 @@ shadermodeinfo_t glslshadermodeinfo[SHADERMODE_COUNT] =
 	{"glsl/default.glsl", "#define MODE_VERTEXCOLOR\n", " vertexcolor"},
 	{"glsl/default.glsl", "#define MODE_LIGHTMAP\n", " lightmap"},
 	{"glsl/default.glsl", "#define MODE_LIGHTMAP_YCG2\n", " lightmap_ycg2"},
-	{"glsl/default.glsl", "#define MODE_LIGHTMAP_YCG4\n", " lightmap_ycg4"},
+	{"glsl/default.glsl", "#define MODE_LIGHTMAP_YCG2SRGB\n", " lightmap_ycg2srgb"},
 	{"glsl/default.glsl", "#define MODE_FAKELIGHT\n", " fakelight"},
 	{"glsl/default.glsl", "#define MODE_LIGHTDIRECTIONMAP_MODELSPACE\n", " lightdirectionmap_modelspace"},
 	{"glsl/default.glsl", "#define MODE_LIGHTDIRECTIONMAP_MODELSPACE_YCG2\n", " lightdirectionmap_modelspace_ycg2"},
-	{"glsl/default.glsl", "#define MODE_LIGHTDIRECTIONMAP_MODELSPACE_YCG4\n", " lightdirectionmap_modelspace_ycg4"},
+	{"glsl/default.glsl", "#define MODE_LIGHTDIRECTIONMAP_MODELSPACE_YCG2SRGB\n", " lightdirectionmap_modelspace_ycg2srgb"},
 	{"glsl/default.glsl", "#define MODE_LIGHTDIRECTIONMAP_TANGENTSPACE\n", " lightdirectionmap_tangentspace"},
 	{"glsl/default.glsl", "#define MODE_LIGHTDIRECTIONMAP_TANGENTSPACE_YCG2\n", " lightdirectionmap_tangentspace_ycg2"},
-	{"glsl/default.glsl", "#define MODE_LIGHTDIRECTIONMAP_TANGENTSPACE_YCG4\n", " lightdirectionmap_tangentspace_ycg4"},
+	{"glsl/default.glsl", "#define MODE_LIGHTDIRECTIONMAP_TANGENTSPACE_YCG2SRGB\n", " lightdirectionmap_tangentspace_ycg2srgb"},
 	{"glsl/default.glsl", "#define MODE_LIGHTDIRECTIONMAP_FORCED_LIGHTMAP\n", " lightdirectionmap_forced_lightmap"},
 	{"glsl/default.glsl", "#define MODE_LIGHTDIRECTIONMAP_FORCED_VERTEXCOLOR\n", " lightdirectionmap_forced_vertexcolor"},
 	{"glsl/default.glsl", "#define MODE_LIGHTDIRECTION\n", " lightdirection"},
@@ -731,14 +731,14 @@ shadermodeinfo_t hlslshadermodeinfo[SHADERMODE_COUNT] =
 	{"hlsl/default.hlsl", "#define MODE_VERTEXCOLOR\n", " vertexcolor"},
 	{"hlsl/default.hlsl", "#define MODE_LIGHTMAP\n", " lightmap"},
 	{"hlsl/default.hlsl", "#define MODE_LIGHTMAP_YCG2\n", " lightmap_ycg2"},
-	{"hlsl/default.hlsl", "#define MODE_LIGHTMAP_YCG4\n", " lightmap_ycg4"},
+	{"hlsl/default.hlsl", "#define MODE_LIGHTMAP_YCG2SRGB\n", " lightmap_ycg2srgb"},
 	{"hlsl/default.hlsl", "#define MODE_FAKELIGHT\n", " fakelight"},
 	{"hlsl/default.hlsl", "#define MODE_LIGHTDIRECTIONMAP_MODELSPACE\n", " lightdirectionmap_modelspace"},
 	{"hlsl/default.hlsl", "#define MODE_LIGHTDIRECTIONMAP_MODELSPACE_YCG2\n", " lightdirectionmap_modelspace_ycg2"},
-	{"hlsl/default.hlsl", "#define MODE_LIGHTDIRECTIONMAP_MODELSPACE_YCG4\n", " lightdirectionmap_modelspace_ycg4"},
+	{"hlsl/default.hlsl", "#define MODE_LIGHTDIRECTIONMAP_MODELSPACE_YCG2SRGB\n", " lightdirectionmap_modelspace_ycg2srgb"},
 	{"hlsl/default.hlsl", "#define MODE_LIGHTDIRECTIONMAP_TANGENTSPACE\n", " lightdirectionmap_tangentspace"},
 	{"hlsl/default.hlsl", "#define MODE_LIGHTDIRECTIONMAP_TANGENTSPACE_YCG2\n", " lightdirectionmap_tangentspace_ycg2"},
-	{"hlsl/default.hlsl", "#define MODE_LIGHTDIRECTIONMAP_TANGENTSPACE_YCG4\n", " lightdirectionmap_tangentspace_ycg4"},
+	{"hlsl/default.hlsl", "#define MODE_LIGHTDIRECTIONMAP_TANGENTSPACE_YCG2SRGB\n", " lightdirectionmap_tangentspace_ycg2srgb"},
 	{"hlsl/default.hlsl", "#define MODE_LIGHTDIRECTIONMAP_FORCED_LIGHTMAP\n", " lightdirectionmap_forced_lightmap"},
 	{"hlsl/default.hlsl", "#define MODE_LIGHTDIRECTIONMAP_FORCED_VERTEXCOLOR\n", " lightdirectionmap_forced_vertexcolor"},
 	{"hlsl/default.hlsl", "#define MODE_LIGHTDIRECTION\n", " lightdirection"},
@@ -2573,9 +2573,9 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			textype_t textype = R_TextureType(rsurface.lightmaptexture);
 			// deluxemapping (light direction texture)
 			if (rsurface.uselightmaptexture && r_refdef.scene.worldmodel && r_refdef.scene.worldmodel->brushq3.deluxemapping && r_refdef.scene.worldmodel->brushq3.deluxemapping_modelspace)
-				mode = (textype == TEXTYPE_DXT5_YCG4) ? SHADERMODE_LIGHTDIRECTIONMAP_MODELSPACE_YCG4 : ((textype == TEXTYPE_DXT5_YCG2) ? SHADERMODE_LIGHTDIRECTIONMAP_MODELSPACE_YCG2 : SHADERMODE_LIGHTDIRECTIONMAP_MODELSPACE);
+				mode = (textype == TEXTYPE_DXT5_YCG2SRGB) ? SHADERMODE_LIGHTDIRECTIONMAP_MODELSPACE_YCG2SRGB : ((textype == TEXTYPE_DXT5_YCG2) ? SHADERMODE_LIGHTDIRECTIONMAP_MODELSPACE_YCG2 : SHADERMODE_LIGHTDIRECTIONMAP_MODELSPACE);
 			else
-				mode = (textype == TEXTYPE_DXT5_YCG4) ? SHADERMODE_LIGHTDIRECTIONMAP_TANGENTSPACE_YCG4 : ((textype == TEXTYPE_DXT5_YCG2) ? SHADERMODE_LIGHTDIRECTIONMAP_TANGENTSPACE_YCG2 : SHADERMODE_LIGHTDIRECTIONMAP_TANGENTSPACE);
+				mode = (textype == TEXTYPE_DXT5_YCG2SRGB) ? SHADERMODE_LIGHTDIRECTIONMAP_TANGENTSPACE_YCG2SRGB : ((textype == TEXTYPE_DXT5_YCG2) ? SHADERMODE_LIGHTDIRECTIONMAP_TANGENTSPACE_YCG2 : SHADERMODE_LIGHTDIRECTIONMAP_TANGENTSPACE);
 			permutation |= SHADERPERMUTATION_DIFFUSE;
 			if (specularscale > 0)
 				permutation |= SHADERPERMUTATION_SPECULAR | SHADERPERMUTATION_DIFFUSE;
@@ -2595,7 +2595,7 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 		{
 			textype_t textype = R_TextureType(rsurface.lightmaptexture);
 			// ordinary lightmapping (q1bsp, q3bsp)
-			mode = (textype == TEXTYPE_DXT5_YCG4) ? SHADERMODE_LIGHTMAP_YCG4 : ((textype == TEXTYPE_DXT5_YCG2) ? SHADERMODE_LIGHTMAP_YCG2 : SHADERMODE_LIGHTMAP);
+			mode = (textype == TEXTYPE_DXT5_YCG2SRGB) ? SHADERMODE_LIGHTMAP_YCG2SRGB : ((textype == TEXTYPE_DXT5_YCG2) ? SHADERMODE_LIGHTMAP_YCG2 : SHADERMODE_LIGHTMAP);
 		}
 		else
 		{

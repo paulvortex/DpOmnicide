@@ -58,7 +58,7 @@ typedef enum textype_e
 
 	// DXT5 swizzled formats
 	TEXTYPE_DXT5_YCG2, // YCoCg Scaled
-	TEXTYPE_DXT5_YCG4, // YCoCg Scaled Gamma 2.0
+	TEXTYPE_DXT5_YCG2SRGB, // YCoCg Scaled sRGB (needs shader-decode)
 
 	// default compressed type for GLES2
 	TEXTYPE_ETC1,
