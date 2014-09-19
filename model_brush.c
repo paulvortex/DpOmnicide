@@ -43,6 +43,7 @@ cvar_t r_subdivisions_collision_maxvertices = {0, "r_subdivisions_collision_maxv
 cvar_t r_trippy = {0, "r_trippy", "0", "easter egg"};
 cvar_t r_fxaa = {CVAR_SAVE, "r_fxaa", "0", "fast approximate anti aliasing"};
 cvar_t mod_noshader_default_offsetmapping = {CVAR_SAVE, "mod_noshader_default_offsetmapping", "1", "use offsetmapping by default on all surfaces that are not using q3 shader files"};
+cvar_t mod_noshader_default_selfshadowing = {CVAR_SAVE, "mod_noshader_default_selfshadowing", "1", "use selfshadowing by default on all surfaces that are not using q3 shader files"};
 cvar_t mod_obj_orientation = {0, "mod_obj_orientation", "1", "fix orientation of OBJ models to the usual conventions (if zero, use coordinates as is)"};
 cvar_t mod_q3bsp_curves_collisions = {0, "mod_q3bsp_curves_collisions", "1", "enables collisions with curves (SLOW)"};
 cvar_t mod_q3bsp_curves_collisions_stride = {0, "mod_q3bsp_curves_collisions_stride", "16", "collisions against curves: optimize performance by doing a combined collision check for this triangle amount first (-1 avoids any box tests)"};
@@ -58,6 +59,8 @@ cvar_t mod_q3bsp_fixq3map2bugs = {0, "mod_q3bsp_fixq3map2bugs", "1", "applies va
 cvar_t mod_q3shader_default_offsetmapping = {CVAR_SAVE, "mod_q3shader_default_offsetmapping", "1", "use offsetmapping by default on all surfaces that are using q3 shader files"};
 cvar_t mod_q3shader_default_offsetmapping_scale = {CVAR_SAVE, "mod_q3shader_default_offsetmapping_scale", "1", "default scale used for offsetmapping"};
 cvar_t mod_q3shader_default_offsetmapping_bias = {CVAR_SAVE, "mod_q3shader_default_offsetmapping_bias", "0", "default bias used for offsetmapping"};
+cvar_t mod_q3shader_default_selfshadowing = {CVAR_SAVE, "mod_q3shader_default_selfshadowing", "1", "use selfshadowing by default on all surfaces that are using q3 shader files"};
+cvar_t mod_q3shader_default_selfshadowing_scale = {CVAR_SAVE, "mod_q3shader_default_selfshadowing_scale", "1", "default scale used for selfshadowing"};
 cvar_t mod_q3shader_default_polygonfactor = {0, "mod_q3shader_default_polygonfactor", "0", "biases depth values of 'polygonoffset' shaders to prevent z-fighting artifacts"};
 cvar_t mod_q3shader_default_polygonoffset = {0, "mod_q3shader_default_polygonoffset", "-2", "biases depth values of 'polygonoffset' shaders to prevent z-fighting artifacts"};
 cvar_t mod_q3shader_force_addalpha = {0, "mod_q3shader_force_addalpha", "0", "treat GL_ONE GL_ONE (or add) blendfunc as GL_SRC_ALPHA GL_ONE for compatibility with older DarkPlaces releases"};
@@ -92,6 +95,7 @@ void Mod_BrushInit(void)
 	Cvar_RegisterVariable(&r_trippy);
 	Cvar_RegisterVariable(&r_fxaa);
 	Cvar_RegisterVariable(&mod_noshader_default_offsetmapping);
+	Cvar_RegisterVariable(&mod_noshader_default_selfshadowing);
 	Cvar_RegisterVariable(&mod_obj_orientation);
 	Cvar_RegisterVariable(&mod_q3bsp_curves_collisions);
 	Cvar_RegisterVariable(&mod_q3bsp_curves_collisions_stride);
@@ -107,6 +111,8 @@ void Mod_BrushInit(void)
 	Cvar_RegisterVariable(&mod_q3shader_default_offsetmapping);
 	Cvar_RegisterVariable(&mod_q3shader_default_offsetmapping_scale);
 	Cvar_RegisterVariable(&mod_q3shader_default_offsetmapping_bias);
+	Cvar_RegisterVariable(&mod_q3shader_default_selfshadowing);
+	Cvar_RegisterVariable(&mod_q3shader_default_selfshadowing_scale);
 	Cvar_RegisterVariable(&mod_q3shader_default_polygonfactor);
 	Cvar_RegisterVariable(&mod_q3shader_default_polygonoffset);
 	Cvar_RegisterVariable(&mod_q3shader_force_addalpha);
@@ -1699,6 +1705,10 @@ static void Mod_Q1BSP_LoadTextures(sizebuf_t *sb)
 		tx->offsetmapping = OFFSETMAPPING_DEFAULT;
 		tx->offsetscale = 1;
 		tx->offsetbias = 0;
+		tx->selfshadowing = true;
+		tx->selfshadowingscale = 1;
+		tx->selfshadowingoffsetscale = 1;
+		tx->selfshadowingoffsetbias = 0;
 		tx->specularscalemod = 1;
 		tx->specularpowermod = 1;
 		tx->transparentsort = TRANSPARENTSORT_DISTANCE;
@@ -1835,7 +1845,10 @@ static void Mod_Q1BSP_LoadTextures(sizebuf_t *sb)
 				if (!skinframe)
 					skinframe = R_SkinFrame_LoadExternal(gamemode == GAME_TENEBRAE ? tx->name : va(vabuf, sizeof(vabuf), "textures/%s", tx->name), TEXF_ALPHA | TEXF_MIPMAP | TEXF_ISWORLD | TEXF_PICMIP | TEXF_COMPRESS, false, false);
 				if (skinframe)
+				{
 					tx->offsetmapping = OFFSETMAPPING_DEFAULT; // allow offsetmapping on external textures without a q3 shader
+					tx->selfshadowing = true;
+				}
 				if (!skinframe)
 				{
 					// did not find external texture, load it from the bsp or wad3

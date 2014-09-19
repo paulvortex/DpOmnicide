@@ -1637,9 +1637,12 @@ static void Q3Shader_AddToHash (q3shaderinfo_t* shader)
 }
 
 extern cvar_t mod_noshader_default_offsetmapping;
+extern cvar_t mod_noshader_default_selfshadowing;
 extern cvar_t mod_q3shader_default_offsetmapping;
 extern cvar_t mod_q3shader_default_offsetmapping_scale;
 extern cvar_t mod_q3shader_default_offsetmapping_bias;
+extern cvar_t mod_q3shader_default_selfshadowing;
+extern cvar_t mod_q3shader_default_selfshadowing_scale;
 extern cvar_t mod_q3shader_default_polygonoffset;
 extern cvar_t mod_q3shader_default_polygonfactor;
 extern cvar_t mod_q3shader_force_addalpha;
@@ -1648,6 +1651,7 @@ void Mod_LoadQ3Shaders(void)
 {
 	int j;
 	int fileindex;
+	int selfshadowingmode;
 	fssearch_t *search;
 	char *f;
 	const char *text;
@@ -1756,12 +1760,17 @@ void Mod_LoadQ3Shaders(void)
 			shader.offsetmapping = (mod_q3shader_default_offsetmapping.value) ? OFFSETMAPPING_DEFAULT : OFFSETMAPPING_OFF;
 			shader.offsetscale = mod_q3shader_default_offsetmapping_scale.value;
 			shader.offsetbias = mod_q3shader_default_offsetmapping_bias.value;
+			shader.selfshadowing = (mod_q3shader_default_selfshadowing.value) ? true : false;
+			shader.selfshadowingscale = mod_q3shader_default_selfshadowing_scale.value; 
+			shader.selfshadowingoffsetscale = mod_q3shader_default_offsetmapping_scale.value;
+			shader.selfshadowingoffsetbias = mod_q3shader_default_offsetmapping_bias.value;
 			shader.biaspolygonoffset = mod_q3shader_default_polygonoffset.value;
 			shader.biaspolygonfactor = mod_q3shader_default_polygonfactor.value;
 			shader.transparentsort = TRANSPARENTSORT_DISTANCE;
 			shader.specularscalemod = 1;
 			shader.specularpowermod = 1;
 			shader.rtlightambient = 0;
+			selfshadowingmode = 0;
 			// WHEN ADDING DEFAULTS HERE, REMEMBER TO PUT DEFAULTS IN ALL LOADERS
 			// JUST GREP FOR "specularscalemod = 1".
 
@@ -2363,6 +2372,37 @@ void Mod_LoadQ3Shaders(void)
 							shader.offsetbias = 1.0f - atof(parameter[4]) / 65535.0f;
 					}
 				}
+				else if (!strcasecmp(parameter[0], "dpselfshadowing") && numparameters >= 2)
+				{
+					//dpselfshadowing disable
+					//dpselfshadowing <scale>
+					//dpselfshadowing <scale> <offsetscale>
+					//dpselfshadowing <scale> <offsetscale> bias/match/match8/match16 <h>
+					if (!strcasecmp(parameter[1], "disable") || !strcasecmp(parameter[1], "none") || !strcasecmp(parameter[1], "off"))
+						shader.selfshadowing = false;
+					else
+					{
+						shader.selfshadowing = true;
+						shader.selfshadowingscale = atof(parameter[1]);
+						if (numparameters >= 3)
+						{
+							shader.selfshadowingoffsetscale = atof(parameter[2]);
+							selfshadowingmode |= 1;
+						}
+						if (numparameters >= 5)
+						{
+							if(!strcasecmp(parameter[3], "bias"))
+								shader.selfshadowingoffsetbias = atof(parameter[4]);
+							else if(!strcasecmp(parameter[3], "match"))
+								shader.selfshadowingoffsetbias = 1.0f - atof(parameter[4]);
+							else if(!strcasecmp(parameter[3], "match8"))
+								shader.selfshadowingoffsetbias = 1.0f - atof(parameter[4]) / 255.0f;
+							else if(!strcasecmp(parameter[3], "match16"))
+								shader.selfshadowingoffsetbias = 1.0f - atof(parameter[4]) / 65535.0f;
+							selfshadowingmode |= 2;
+						}
+					}
+				}
 				else if (!strcasecmp(parameter[0], "deformvertexes") && numparameters >= 2)
 				{
 					int i, deformindex;
@@ -2402,6 +2442,24 @@ void Mod_LoadQ3Shaders(void)
 						}
 					}
 				}
+			}
+			// disable offsetmapping is one of values is null
+			if (shader.offsetmapping != OFFSETMAPPING_OFF)
+			{
+				if (!shader.offsetscale)
+					shader.offsetmapping = OFFSETMAPPING_OFF;
+			}
+			// default self shadowing parms to ones set with offsetmapping
+			if (shader.selfshadowing)
+			{
+				// disable self shadowing if one of values is null
+				if (!shader.selfshadowingscale || !shader.selfshadowingoffsetscale)
+					shader.selfshadowing = false;
+				// copy some parms from offsetmapping
+				if (!(selfshadowingmode & 1))
+					shader.selfshadowingoffsetscale = shader.offsetscale;
+				if (!(selfshadowingmode & 2))
+					shader.selfshadowingoffsetbias = shader.offsetbias;
 			}
 			// hide this shader if a cvar said it should be killed
 			if (shader.dpshaderkill)
@@ -2486,6 +2544,10 @@ qboolean Mod_LoadTextureFromQ3Shader(texture_t *texture, const char *name, qbool
 	texture->offsetmapping = (mod_noshader_default_offsetmapping.value) ? OFFSETMAPPING_DEFAULT : OFFSETMAPPING_OFF;
 	texture->offsetscale = 1;
 	texture->offsetbias = 0;
+	texture->selfshadowing = (mod_noshader_default_selfshadowing.value) ? true : false;
+	texture->selfshadowingscale = 1;
+	texture->selfshadowingoffsetscale = 1;
+	texture->selfshadowingoffsetbias = 0;
 	texture->specularscalemod = 1;
 	texture->specularpowermod = 1; 
 	texture->rtlightambient = 0;
@@ -2641,6 +2703,10 @@ nothing                GL_ZERO GL_ONE
 		texture->offsetmapping = shader->offsetmapping;
 		texture->offsetscale = shader->offsetscale;
 		texture->offsetbias = shader->offsetbias;
+		texture->selfshadowing = shader->selfshadowing;
+		texture->selfshadowingscale = shader->selfshadowingscale;
+		texture->selfshadowingoffsetscale = shader->selfshadowingoffsetscale;
+		texture->selfshadowingoffsetbias = shader->selfshadowingoffsetbias;
 		texture->specularscalemod = shader->specularscalemod;
 		texture->specularpowermod = shader->specularpowermod;
 		texture->rtlightambient = shader->rtlightambient;

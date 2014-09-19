@@ -930,6 +930,10 @@ static void Mod_BuildAliasSkinFromSkinFrame(texture_t *texture, skinframe_t *ski
 	texture->offsetmapping = OFFSETMAPPING_DEFAULT;
 	texture->offsetscale = 1;
 	texture->offsetbias = 0;
+	texture->selfshadowing = true;
+	texture->selfshadowingoffsetscale = 1;
+	texture->selfshadowingoffsetbias = 0;
+	texture->selfshadowingscale = 0;
 	texture->specularscalemod = 1;
 	texture->specularpowermod = 1;
 	texture->surfaceflags = 0;

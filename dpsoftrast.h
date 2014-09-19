@@ -197,12 +197,12 @@ typedef enum shaderpermutation_e
 	SHADERPERMUTATION_REFLECTCUBE = 1<<23, ///< fake reflections using global cubemap (not HDRI light probe)
 	SHADERPERMUTATION_SCROLLBLEND = 1<<24, ///< counter-direction normalmap/diffuse texture scroll effect
 	SHADERPERMUTATION_BOUNCEGRID = 1<<25, ///< (lightmap) use Texture_BounceGrid as an additional source of ambient light
-	SHADERPERMUTATION_BOUNCEGRIDDIRECTIONAL = 1<<26, ///< (lightmap) use 16-component pixels in bouncegrid texture for directional lighting rather than standard 4-component
-	SHADERPERMUTATION_TRIPPY = 1<<27, ///< use trippy vertex shader effect
-	SHADERPERMUTATION_DEPTHRGB = 1<<28, ///< read/write depth values in RGB color coded format for older hardware without depth samplers
-	SHADERPERMUTATION_ALPHAGEN_VERTEX = 1<<29, ///< alphaGen vertex
-	SHADERPERMUTATION_SKELETAL = 1<<30, ///< (skeletal models) use skeletal matrices to deform vertices (gpu-skinning)
-	SHADERPERMUTATION_COUNT = 31 ///< size of shaderpermutationinfo array
+	SHADERPERMUTATION_TRIPPY = 1<<26, ///< use trippy vertex shader effect
+	SHADERPERMUTATION_DEPTHRGB = 1<<27, ///< read/write depth values in RGB color coded format for older hardware without depth samplers
+	SHADERPERMUTATION_ALPHAGEN_VERTEX = 1<<28, ///< alphaGen vertex
+	SHADERPERMUTATION_SKELETAL = 1<<29, ///< (skeletal models) use skeletal matrices to deform vertices (gpu-skinning)
+	SHADERPERMUTATION_SELFSHADOWING = 1<<30, ///< apply self shadowing during lighting using heightmap and displacement mapping
+	SHADERPERMUTATION_COUNT = 32 ///< size of shaderpermutationinfo array
 }
 shaderpermutation_t;
 
@@ -261,6 +261,7 @@ typedef enum DPSOFTRAST_UNIFORM_e
 	DPSOFTRAST_UNIFORM_LightDir,
 	DPSOFTRAST_UNIFORM_LightPosition,
 	DPSOFTRAST_UNIFORM_OffsetMapping_ScaleSteps,
+	DPSOFTRAST_UNIFORM_SelfShadowing_Parameters,
 	DPSOFTRAST_UNIFORM_PixelSize,
 	DPSOFTRAST_UNIFORM_ReflectColor,
 	DPSOFTRAST_UNIFORM_ReflectFactor,

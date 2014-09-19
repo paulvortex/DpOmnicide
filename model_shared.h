@@ -491,6 +491,12 @@ typedef struct q3shaderinfo_s
 	float offsetscale;
 	float offsetbias; // 0 is normal, 1 leads to alpha 0 being neutral and alpha 1 pushing "out"
 
+	// self shadowing
+	qboolean selfshadowing;
+	float selfshadowingscale;
+	float selfshadowingoffsetscale;
+	float selfshadowingoffsetbias;
+
 	// polygonoffset (only used if Q3TEXTUREFLAG_POLYGONOFFSET)
 	float biaspolygonoffset, biaspolygonfactor;
 
@@ -639,6 +645,12 @@ typedef struct texture_s
 	dpoffsetmapping_technique_t offsetmapping;
 	float offsetscale;
 	float offsetbias;
+
+	// self shadowing
+	qboolean selfshadowing;
+	float selfshadowingscale;
+	float selfshadowingoffsetscale;
+	float selfshadowingoffsetbias;
 
 	// transparent sort category
 	dptransparentsortcategory_t transparentsort;

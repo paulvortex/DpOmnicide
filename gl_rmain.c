@@ -177,6 +177,12 @@ cvar_t r_glsl_offsetmapping_reliefmapping_refinesteps = {CVAR_SAVE, "r_glsl_offs
 cvar_t r_glsl_offsetmapping_scale = {CVAR_SAVE, "r_glsl_offsetmapping_scale", "0.04", "how deep the offset mapping effect is"};
 cvar_t r_glsl_offsetmapping_lod = {CVAR_SAVE, "r_glsl_offsetmapping_lod", "0", "apply distance-based level-of-detail correction to number of offsetmappig steps, effectively making it render faster on large open-area maps"};
 cvar_t r_glsl_offsetmapping_lod_distance = {CVAR_SAVE, "r_glsl_offsetmapping_lod_distance", "32", "first LOD level distance, second level (-50% steps) is 2x of this, third (33%) - 3x etc."};
+cvar_t r_glsl_selfshadowing = {CVAR_SAVE, "r_glsl_selfshadowing", "0", "self shadowing effect (local texture shadow casting using virtual displacement mapping)"};
+cvar_t r_glsl_selfshadowing_scale = {CVAR_SAVE, "r_glsl_selfshadowing_scale", "1", "how dark self shadowing effect is"};
+cvar_t r_glsl_selfshadowing_offsetscale = {CVAR_SAVE, "r_glsl_selfshadowing_offsetscale", "1", "how deep the displacement is used to calculate self shadowing. based on r_glsl_offsetmapping_scale"};
+cvar_t r_glsl_selfshadowing_lightmap = {CVAR_SAVE, "r_glsl_selfshadowing_lightmap", "1", "apply self shadowing on deluxemapped surfaces and model shading"};
+cvar_t r_glsl_selfshadowing_lightmap_scale = {CVAR_SAVE, "r_glsl_selfshadowing_lightmap_scale", "0.333", "addition scale applied during lightmap/deluxemap/lightdirection pass"};
+cvar_t r_glsl_selfshadowing_lightmap_offsetscale = {CVAR_SAVE, "r_glsl_selfshadowing_lightmap_offsetscale", "1.5", "addition scale applied during lightmap/deluxemap/lightdirection pass"};
 cvar_t r_glsl_postprocess = {CVAR_SAVE, "r_glsl_postprocess", "0", "use a GLSL postprocessing shader"};
 cvar_t r_glsl_postprocess_uservec1 = {CVAR_SAVE, "r_glsl_postprocess_uservec1", "0 0 0 0", "a 4-component vector to pass as uservec1 to the postprocessing shader (only useful if default.glsl has been customized)"};
 cvar_t r_glsl_postprocess_uservec2 = {CVAR_SAVE, "r_glsl_postprocess_uservec2", "0 0 0 0", "a 4-component vector to pass as uservec2 to the postprocessing shader (only useful if default.glsl has been customized)"};
@@ -236,7 +242,7 @@ cvar_t r_smoothnormals_areaweighting = {0, "r_smoothnormals_areaweighting", "1",
 
 cvar_t developer_texturelogging = {0, "developer_texturelogging", "0", "produces a textures.log file containing names of skins and map textures the engine tried to load"};
 
-cvar_t gl_lightmaps = {0, "gl_lightmaps", "0", "draws only lightmaps, no texture (for level designers), a value of 2 keeps normalmap shading"};
+cvar_t gl_lightmaps = {0, "gl_lightmaps", "0", "draws only lightmaps, no texture (for level designers), a value of 2 keeps normalmap shading, a value of 4 keeps specular, a value of 20 shows only specular, a value of 24 shows only glow"};
 
 cvar_t r_test = {0, "r_test", "0", "internal development use only, leave it alone (usually does nothing anyway)"};
 
@@ -274,6 +280,7 @@ int r_uniformbufferalignment = 32; // dynamically updated to match GL_UNIFORM_BU
 rtexture_t *r_texture_blanknormalmap;
 rtexture_t *r_texture_white;
 rtexture_t *r_texture_grey128;
+rtexture_t *r_texture_grey128alpha128;
 rtexture_t *r_texture_black;
 rtexture_t *r_texture_notexture;
 rtexture_t *r_texture_whitecube;
@@ -396,6 +403,11 @@ static void R_BuildBlankTextures(void)
 	data[2] = 128;
 	data[3] = 255;
 	r_texture_grey128 = R_LoadTexture2D(r_main_texturepool, "blankgrey128", 1, 1, data, TEXTYPE_BGRA, TEXF_PERSISTENT, -1, NULL);
+	data[0] = 128;
+	data[1] = 128;
+	data[2] = 128;
+	data[3] = 128;
+	r_texture_grey128alpha128 = R_LoadTexture2D(r_main_texturepool, "blankgrey128alpha128", 1, 1, data, TEXTYPE_BGRA, TEXF_PERSISTENT | TEXF_ALPHA, -1, NULL);
 	data[0] = 0;
 	data[1] = 0;
 	data[2] = 0;
@@ -687,11 +699,11 @@ shaderpermutationinfo_t shaderpermutationinfo[SHADERPERMUTATION_COUNT] =
 	{"#define USEREFLECTCUBE\n", " reflectcube"},
 	{"#define USESCROLLBLEND\n", " scrollblend"},
 	{"#define USEBOUNCEGRID\n", " bouncegrid"},
-	{"#define USEBOUNCEGRIDDIRECTIONAL\n", " bouncegriddirectional"}, // TODO make this a static parm
 	{"#define USETRIPPY\n", " trippy"},
 	{"#define USEDEPTHRGB\n", " depthrgb"},
 	{"#define USEALPHAGENVERTEX\n", " alphagenvertex"},
-	{"#define USESKELETAL\n", " skeletal"}
+	{"#define USESKELETAL\n", " skeletal"},
+	{"#define USESELFSHADOWING\n", " selfshadowing"}
 };
 
 // NOTE: MUST MATCH ORDER OF SHADERMODE_* ENUMS!
@@ -848,6 +860,7 @@ typedef struct r_glsl_permutation_s
 	int loc_OffsetMapping_ScaleSteps;
 	int loc_OffsetMapping_LodDistance;
 	int loc_OffsetMapping_Bias;
+	int loc_SelfShadowing_Parameters;
 	int loc_PixelSize;
 	int loc_ReflectColor;
 	int loc_ReflectFactor;
@@ -909,9 +922,10 @@ enum
 	SHADERSTATICPARM_CELSHADING = 11, ///< celshading (alternative diffuse and specular math)
 	SHADERSTATICPARM_CELOUTLINES = 12, ///< celoutline (depth buffer analysis to produce outlines)
 	SHADERSTATICPARM_FXAA = 13, ///< fast approximate anti aliasing
-	SHADERSTATICPARM_SUNLIGHT = 14 // sunlight
+	SHADERSTATICPARM_SUNLIGHT = 14, // sunlight
+	SHADERSTATICPARM_BOUNCEGRIDDIRECTIONAL = 15 // use 16-component pixels in bouncegrid texture for directional lighting rather than standard 4-component
 };
-#define SHADERSTATICPARMS_COUNT 14
+#define SHADERSTATICPARMS_COUNT 15
 
 static const char *shaderstaticparmstrings_list[SHADERSTATICPARMS_COUNT];
 static int shaderstaticparms_count = 0;
@@ -962,6 +976,8 @@ qboolean R_CompileShader_CheckStaticParms(void)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_CELOUTLINES);
 	if (r_sunlight.integer)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_SUNLIGHT);
+	if (r_shadow_bouncegridtexture && cl.csqc_vidvars.drawworld && r_shadow_bouncegriddirectional)
+		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_BOUNCEGRIDDIRECTIONAL);
 
 	return memcmp(r_compileshader_staticparms, r_compileshader_staticparms_save, sizeof(r_compileshader_staticparms)) != 0;
 }
@@ -991,6 +1007,7 @@ static void R_CompileShader_AddStaticParms(unsigned int mode, unsigned int permu
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_CELOUTLINES, "USECELOUTLINES");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_FXAA, "USEFXAA");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_SUNLIGHT, "USESUNLIGHT");
+	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_BOUNCEGRIDDIRECTIONAL, "USEBOUNCEGRIDDIRECTIONAL");
 }
 
 /// information about each possible shader permutation
@@ -1274,6 +1291,7 @@ static void R_GLSL_CompilePermutation(r_glsl_permutation_t *p, unsigned int mode
 		p->loc_OffsetMapping_ScaleSteps   = qglGetUniformLocation(p->program, "OffsetMapping_ScaleSteps");
 		p->loc_OffsetMapping_LodDistance  = qglGetUniformLocation(p->program, "OffsetMapping_LodDistance");
 		p->loc_OffsetMapping_Bias         = qglGetUniformLocation(p->program, "OffsetMapping_Bias");
+		p->loc_SelfShadowing_Parameters   = qglGetUniformLocation(p->program, "SelfShadowing_Parameters");
 		p->loc_PixelSize                  = qglGetUniformLocation(p->program, "PixelSize");
 		p->loc_ReflectColor               = qglGetUniformLocation(p->program, "ReflectColor");
 		p->loc_ReflectFactor              = qglGetUniformLocation(p->program, "ReflectFactor");
@@ -1532,6 +1550,7 @@ typedef enum D3DPSREGISTER_e
 	D3DPSREGISTER_ScrollBlend = 52,
 	D3DPSREGISTER_OffsetMapping_LodDistance = 53,
 	D3DPSREGISTER_OffsetMapping_Bias = 54,
+	D3DPSREGISTER_SelfShadowing_Parameters = 55,
 	// next at 54
 }
 D3DPSREGISTER_t;
@@ -2241,6 +2260,9 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 	float m16f[16];
 	matrix4x4_t tempmatrix;
 	r_waterstate_waterplane_t *waterplane = (r_waterstate_waterplane_t *)surfacewaterplane;
+	bool haveheightmap = (R_TextureFlags(rsurface.texture->nmaptexture) & TEXF_ALPHA) ? true : false;
+	float selfshadowingscale = 1;
+	float selfshadowingoffsetscale  = 1;
 	if (r_trippy.integer && !notrippy)
 		permutation |= SHADERPERMUTATION_TRIPPY;
 	if (rsurface.texture->currentmaterialflags & MATERIALFLAG_ALPHATEST)
@@ -2290,7 +2312,7 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 	}
 	else if (rsurfacepass == RSURFPASS_DEFERREDGEOMETRY)
 	{
-		if (r_glsl_offsetmapping.integer && ((R_TextureFlags(rsurface.texture->nmaptexture) & TEXF_ALPHA) || rsurface.texture->offsetbias != 0.0f))
+		if (r_glsl_offsetmapping.integer && (haveheightmap || rsurface.texture->offsetbias != 0.0f))
 		{
 			switch(rsurface.texture->offsetmapping)
 			{
@@ -2300,6 +2322,8 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			case OFFSETMAPPING_OFF: break;
 			}
 		}
+		if (r_glsl_selfshadowing.integer && rsurface.texture->selfshadowing && haveheightmap)
+			permutation |= SHADERPERMUTATION_SELFSHADOWING;
 		if (rsurface.texture->currentmaterialflags & MATERIALFLAG_VERTEXTEXTUREBLEND)
 			permutation |= SHADERPERMUTATION_VERTEXTEXTUREBLEND;
 		// normalmap (deferred prepass), may use alpha test on diffuse
@@ -2311,7 +2335,7 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 	}
 	else if (rsurfacepass == RSURFPASS_RTLIGHT)
 	{
-		if (r_glsl_offsetmapping.integer && ((R_TextureFlags(rsurface.texture->nmaptexture) & TEXF_ALPHA) || rsurface.texture->offsetbias != 0.0f))
+		if (r_glsl_offsetmapping.integer && (haveheightmap || rsurface.texture->offsetbias != 0.0f))
 		{
 			switch(rsurface.texture->offsetmapping)
 			{
@@ -2321,6 +2345,8 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			case OFFSETMAPPING_OFF: break;
 			}
 		}
+		if (r_glsl_selfshadowing.integer && rsurface.rtlight->shadow && rsurface.texture->selfshadowing && haveheightmap)
+			permutation |= SHADERPERMUTATION_SELFSHADOWING;
 		if (rsurface.texture->currentmaterialflags & MATERIALFLAG_VERTEXTEXTUREBLEND)
 			permutation |= SHADERPERMUTATION_VERTEXTEXTUREBLEND;
 		if (rsurface.texture->currentmaterialflags & MATERIALFLAG_ALPHAGEN_VERTEX)
@@ -2355,7 +2381,7 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 	}
 	else if (rsurface.texture->currentmaterialflags & MATERIALFLAG_FULLBRIGHT)
 	{
-		if (r_glsl_offsetmapping.integer && ((R_TextureFlags(rsurface.texture->nmaptexture) & TEXF_ALPHA) || rsurface.texture->offsetbias != 0.0f))
+		if (r_glsl_offsetmapping.integer && (haveheightmap || rsurface.texture->offsetbias != 0.0f))
 		{
 			switch(rsurface.texture->offsetmapping)
 			{
@@ -2406,7 +2432,7 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 	}
 	else if (rsurface.texture->currentmaterialflags & MATERIALFLAG_MODELLIGHT_DIRECTIONAL)
 	{
-		if (r_glsl_offsetmapping.integer && ((R_TextureFlags(rsurface.texture->nmaptexture) & TEXF_ALPHA) || rsurface.texture->offsetbias != 0.0f))
+		if (r_glsl_offsetmapping.integer && (haveheightmap || rsurface.texture->offsetbias != 0.0f))
 		{
 			switch(rsurface.texture->offsetmapping)
 			{
@@ -2416,6 +2442,10 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			case OFFSETMAPPING_OFF: break;
 			}
 		}
+		selfshadowingscale = r_glsl_selfshadowing_lightmap_scale.value;
+		selfshadowingoffsetscale = r_glsl_selfshadowing_lightmap_offsetscale.value;
+		if (r_glsl_selfshadowing.integer && r_glsl_selfshadowing_lightmap.integer && rsurface.texture->selfshadowing && haveheightmap)
+			permutation |= SHADERPERMUTATION_SELFSHADOWING;
 		if (rsurface.texture->currentmaterialflags & MATERIALFLAG_VERTEXTEXTUREBLEND)
 			permutation |= SHADERPERMUTATION_VERTEXTEXTUREBLEND;
 		if (rsurface.texture->currentmaterialflags & MATERIALFLAG_ALPHAGEN_VERTEX)
@@ -2446,11 +2476,7 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 		if (rsurface.texture->reflectmasktexture)
 			permutation |= SHADERPERMUTATION_REFLECTCUBE;
 		if (r_shadow_bouncegridtexture && cl.csqc_vidvars.drawworld)
-		{
 			permutation |= SHADERPERMUTATION_BOUNCEGRID;
-			if (r_shadow_bouncegriddirectional)
-				permutation |= SHADERPERMUTATION_BOUNCEGRIDDIRECTIONAL;
-		}
 		GL_BlendFunc(rsurface.texture->currentlayers[0].blendfunc1, rsurface.texture->currentlayers[0].blendfunc2);
 		blendfuncflags = R_BlendFuncFlags(rsurface.texture->currentlayers[0].blendfunc1, rsurface.texture->currentlayers[0].blendfunc2);
 		// when using alphatocoverage, we don't need alphakill
@@ -2467,7 +2493,7 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 	}
 	else if (rsurface.texture->currentmaterialflags & MATERIALFLAG_MODELLIGHT)
 	{
-		if (r_glsl_offsetmapping.integer && ((R_TextureFlags(rsurface.texture->nmaptexture) & TEXF_ALPHA) || rsurface.texture->offsetbias != 0.0f))
+		if (r_glsl_offsetmapping.integer && (haveheightmap || rsurface.texture->offsetbias != 0.0f))
 		{
 			switch(rsurface.texture->offsetmapping)
 			{
@@ -2477,6 +2503,10 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			case OFFSETMAPPING_OFF: break;
 			}
 		}
+		selfshadowingscale = r_glsl_selfshadowing_lightmap_scale.value;
+		selfshadowingoffsetscale = r_glsl_selfshadowing_lightmap_offsetscale.value;
+		if (r_glsl_selfshadowing.integer && r_glsl_selfshadowing_lightmap.integer && rsurface.texture->selfshadowing && haveheightmap)
+			permutation |= SHADERPERMUTATION_SELFSHADOWING;
 		if (rsurface.texture->currentmaterialflags & MATERIALFLAG_VERTEXTEXTUREBLEND)
 			permutation |= SHADERPERMUTATION_VERTEXTEXTUREBLEND;
 		if (rsurface.texture->currentmaterialflags & MATERIALFLAG_ALPHAGEN_VERTEX)
@@ -2504,11 +2534,7 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 		if (rsurface.texture->reflectmasktexture)
 			permutation |= SHADERPERMUTATION_REFLECTCUBE;
 		if (r_shadow_bouncegridtexture && cl.csqc_vidvars.drawworld)
-		{
 			permutation |= SHADERPERMUTATION_BOUNCEGRID;
-			if (r_shadow_bouncegriddirectional)
-				permutation |= SHADERPERMUTATION_BOUNCEGRIDDIRECTIONAL;
-		}
 		GL_BlendFunc(rsurface.texture->currentlayers[0].blendfunc1, rsurface.texture->currentlayers[0].blendfunc2);
 		blendfuncflags = R_BlendFuncFlags(rsurface.texture->currentlayers[0].blendfunc1, rsurface.texture->currentlayers[0].blendfunc2);
 		// when using alphatocoverage, we don't need alphakill
@@ -2525,7 +2551,7 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 	}
 	else
 	{
-		if (r_glsl_offsetmapping.integer && ((R_TextureFlags(rsurface.texture->nmaptexture) & TEXF_ALPHA) || rsurface.texture->offsetbias != 0.0f))
+		if (r_glsl_offsetmapping.integer && (haveheightmap || rsurface.texture->offsetbias != 0.0f))
 		{
 			switch(rsurface.texture->offsetmapping)
 			{
@@ -2535,6 +2561,10 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			case OFFSETMAPPING_OFF: break;
 			}
 		}
+		selfshadowingscale = r_glsl_selfshadowing_lightmap_scale.value;
+		selfshadowingoffsetscale = r_glsl_selfshadowing_lightmap_offsetscale.value;
+		if (r_glsl_selfshadowing.integer && r_glsl_selfshadowing_lightmap.integer && rsurface.texture->selfshadowing && haveheightmap)
+			permutation |= SHADERPERMUTATION_SELFSHADOWING;
 		if (rsurface.texture->currentmaterialflags & MATERIALFLAG_VERTEXTEXTUREBLEND)
 			permutation |= SHADERPERMUTATION_VERTEXTEXTUREBLEND;
 		if (rsurface.texture->currentmaterialflags & MATERIALFLAG_ALPHAGEN_VERTEX)
@@ -2603,11 +2633,7 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			mode = SHADERMODE_VERTEXCOLOR;
 		}
 		if (r_shadow_bouncegridtexture && cl.csqc_vidvars.drawworld)
-		{
 			permutation |= SHADERPERMUTATION_BOUNCEGRID;
-			if (r_shadow_bouncegriddirectional)
-				permutation |= SHADERPERMUTATION_BOUNCEGRIDDIRECTIONAL;
-		}
 		GL_BlendFunc(rsurface.texture->currentlayers[0].blendfunc1, rsurface.texture->currentlayers[0].blendfunc2);
 		blendfuncflags = R_BlendFuncFlags(rsurface.texture->currentlayers[0].blendfunc1, rsurface.texture->currentlayers[0].blendfunc2);
 		// when using alphatocoverage, we don't need alphakill
@@ -2728,6 +2754,12 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 				max(1, (permutation & SHADERPERMUTATION_OFFSETMAPPING_RELIEFMAPPING) ? r_glsl_offsetmapping_reliefmapping_steps.integer : r_glsl_offsetmapping_steps.integer),
 				1.0 / max(1, (permutation & SHADERPERMUTATION_OFFSETMAPPING_RELIEFMAPPING) ? r_glsl_offsetmapping_reliefmapping_steps.integer : r_glsl_offsetmapping_steps.integer),
 				max(1, r_glsl_offsetmapping_reliefmapping_refinesteps.integer)
+			);
+		hlslPSSetParameter4f(D3DPSREGISTER_SelfShadowing_Parameters,
+				r_glsl_offsetmapping_scale.value*r_glsl_selfshadowing_offsetscale.value*selfshadowingoffsetscale*rsurface.texture->selfshadowingoffsetscale,
+				rsurface.texture->selfshadowingoffsetbias,
+				0, // number of steps, unused
+				r_glsl_selfshadowing_scale.value*selfshadowingscale*rsurface.texture->selfshadowingscale
 			);
 		hlslPSSetParameter1f(D3DPSREGISTER_OffsetMapping_LodDistance, r_glsl_offsetmapping_lod_distance.integer * r_refdef.view.quality);
 		hlslPSSetParameter1f(D3DPSREGISTER_OffsetMapping_Bias, rsurface.texture->offsetbias);
@@ -2902,6 +2934,12 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			);
 		if (r_glsl_permutation->loc_OffsetMapping_LodDistance >= 0) qglUniform1f(r_glsl_permutation->loc_OffsetMapping_LodDistance, r_glsl_offsetmapping_lod_distance.integer * r_refdef.view.quality);
 		if (r_glsl_permutation->loc_OffsetMapping_Bias >= 0) qglUniform1f(r_glsl_permutation->loc_OffsetMapping_Bias, rsurface.texture->offsetbias);
+		if (r_glsl_permutation->loc_SelfShadowing_Parameters >= 0) qglUniform4f(r_glsl_permutation->loc_SelfShadowing_Parameters,
+				r_glsl_offsetmapping_scale.value*r_glsl_selfshadowing_offsetscale.value*selfshadowingoffsetscale*rsurface.texture->selfshadowingoffsetscale,
+				rsurface.texture->selfshadowingoffsetbias,
+				0, // number of steps, unused
+				r_glsl_selfshadowing_scale.value*selfshadowingscale*rsurface.texture->selfshadowingscale
+			);
 		if (r_glsl_permutation->loc_ScreenToDepth >= 0) qglUniform2f(r_glsl_permutation->loc_ScreenToDepth, r_refdef.view.viewport.screentodepth[0], r_refdef.view.viewport.screentodepth[1]);
 		if (r_glsl_permutation->loc_PixelToScreenTexCoord >= 0) qglUniform2f(r_glsl_permutation->loc_PixelToScreenTexCoord, 1.0f/vid.width, 1.0f/vid.height);
 		if (r_glsl_permutation->loc_BounceGridMatrix >= 0) {Matrix4x4_Concat(&tempmatrix, &r_shadow_bouncegridmatrix, &rsurface.matrix);Matrix4x4_ToArrayFloatGL(&tempmatrix, m16f);qglUniformMatrix4fv(r_glsl_permutation->loc_BounceGridMatrix, 1, false, m16f);}
@@ -3055,6 +3093,12 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			);
 		DPSOFTRAST_Uniform1f(DPSOFTRAST_UNIFORM_OffsetMapping_LodDistance, r_glsl_offsetmapping_lod_distance.integer * r_refdef.view.quality);
 		DPSOFTRAST_Uniform1f(DPSOFTRAST_UNIFORM_OffsetMapping_Bias, rsurface.texture->offsetbias);
+		DPSOFTRAST_Uniform4f(DPSOFTRAST_UNIFORM_SelfShadowing_Parameters,
+				r_glsl_offsetmapping_scale.value*r_glsl_selfshadowing_offsetscale.value*selfshadowingoffsetscale*rsurface.texture->selfshadowingoffsetscale,
+				rsurface.texture->selfshadowingoffsetbias,
+				0, // number of steps, unused
+				r_glsl_selfshadowing_scale.value*selfshadowingscale*rsurface.texture->selfshadowingscale
+			);
 		DPSOFTRAST_Uniform2f(DPSOFTRAST_UNIFORM_ScreenToDepth, r_refdef.view.viewport.screentodepth[0], r_refdef.view.viewport.screentodepth[1]);
 		DPSOFTRAST_Uniform2f(DPSOFTRAST_UNIFORM_PixelToScreenTexCoord, 1.0f/vid.width, 1.0f/vid.height);
 
@@ -4087,6 +4131,7 @@ static void gl_main_start(void)
 	r_texture_blanknormalmap = NULL;
 	r_texture_white = NULL;
 	r_texture_grey128 = NULL;
+	r_texture_grey128alpha128 = NULL;
 	r_texture_black = NULL;
 	r_texture_whitecube = NULL;
 	r_texture_normalizationcube = NULL;
@@ -4260,6 +4305,7 @@ static void gl_main_shutdown(void)
 	r_texture_blanknormalmap = NULL;
 	r_texture_white = NULL;
 	r_texture_grey128 = NULL;
+	r_texture_grey128alpha128 = NULL;
 	r_texture_black = NULL;
 	r_texture_whitecube = NULL;
 	r_texture_normalizationcube = NULL;
@@ -4434,6 +4480,12 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_glsl_offsetmapping_scale);
 	Cvar_RegisterVariable(&r_glsl_offsetmapping_lod);
 	Cvar_RegisterVariable(&r_glsl_offsetmapping_lod_distance);
+	Cvar_RegisterVariable(&r_glsl_selfshadowing);
+	Cvar_RegisterVariable(&r_glsl_selfshadowing_scale);
+	Cvar_RegisterVariable(&r_glsl_selfshadowing_offsetscale);
+	Cvar_RegisterVariable(&r_glsl_selfshadowing_lightmap);
+	Cvar_RegisterVariable(&r_glsl_selfshadowing_lightmap_scale);
+	Cvar_RegisterVariable(&r_glsl_selfshadowing_lightmap_offsetscale);
 	Cvar_RegisterVariable(&r_glsl_postprocess);
 	Cvar_RegisterVariable(&r_glsl_postprocess_uservec1);
 	Cvar_RegisterVariable(&r_glsl_postprocess_uservec2);
@@ -8398,22 +8450,36 @@ texture_t *R_GetCurrentTexture(texture_t *t)
 	// accurately represents the shading involved
 	if (gl_lightmaps.integer)
 	{
-		t->basetexture = r_texture_grey128;
-		t->pantstexture = r_texture_black;
-		t->shirttexture = r_texture_black;
-		if (gl_lightmaps.integer < 2)
-			t->nmaptexture = r_texture_blanknormalmap;
-		t->glosstexture = r_texture_black;
-		t->glowtexture = NULL;
-		t->fogtexture = NULL;
-		t->reflectmasktexture = NULL;
-		t->backgroundbasetexture = NULL;
-		if (gl_lightmaps.integer < 2)
-			t->backgroundnmaptexture = r_texture_blanknormalmap;
-		t->backgroundglosstexture = r_texture_black;
-		t->backgroundglowtexture = NULL;
-		t->specularscale = 0;
-		t->currentmaterialflags = MATERIALFLAG_WALL | (t->currentmaterialflags & (MATERIALFLAG_NOCULLFACE | MATERIALFLAG_MODELLIGHT | MATERIALFLAG_MODELLIGHT_DIRECTIONAL | MATERIALFLAG_NODEPTHTEST | MATERIALFLAG_SHORTDEPTHRANGE));
+		if (t->basetexture != NULL && !(t->basematerialflags & MATERIALFLAG_NODRAW))
+		{
+			if (gl_lightmaps.integer & 16)
+				t->basetexture = r_texture_black;
+			else if (t->basematerialflags & (MATERIALFLAG_ALPHA + MATERIALFLAG_BLENDED))
+				t->basetexture = r_texture_grey128alpha128;
+			else
+				t->basetexture = r_texture_grey128;
+			t->pantstexture = r_texture_black;
+			t->shirttexture = r_texture_black;
+			if (!(gl_lightmaps.integer & 2))
+				t->nmaptexture = r_texture_blanknormalmap;
+			if (!(gl_lightmaps.integer & 4))
+				t->glosstexture = r_texture_black;
+			t->glowtexture = NULL;
+			t->fogtexture = NULL;
+			t->reflectmasktexture = NULL;
+			t->backgroundbasetexture = NULL;
+			if (!(gl_lightmaps.integer & 2))
+				t->backgroundnmaptexture = r_texture_blanknormalmap;
+			if (!(gl_lightmaps.integer & 4))
+			{
+				t->backgroundglosstexture = r_texture_black;
+				t->specularscale = 0;
+			}
+			t->backgroundglowtexture = NULL;
+			t->currentmaterialflags = MATERIALFLAG_WALL | (t->currentmaterialflags & (MATERIALFLAG_NOCULLFACE | MATERIALFLAG_MODELLIGHT | MATERIALFLAG_MODELLIGHT_DIRECTIONAL | MATERIALFLAG_NODEPTHTEST | MATERIALFLAG_SHORTDEPTHRANGE));
+			if (t->basetexture == r_texture_grey128alpha128)
+				t->currentmaterialflags |= MATERIALFLAG_ALPHA | MATERIALFLAG_BLENDED;
+		}
 	}
 
 	Vector4Set(t->lightmapcolor, rsurface.colormod[0], rsurface.colormod[1], rsurface.colormod[2], t->currentalpha);
@@ -12839,6 +12905,9 @@ void R_DrawCustomSurface(skinframe_t *skinframe, const matrix4x4_t *texmatrix, i
 	texture.currenttexmatrix = *texmatrix; // requires MATERIALFLAG_CUSTOMSURFACE
 	texture.offsetmapping = OFFSETMAPPING_OFF;
 	texture.offsetscale = 1;
+	texture.selfshadowing = false;
+	texture.selfshadowingscale = 1;
+	texture.selfshadowingoffsetscale = 1;
 	texture.specularscalemod = 1;
 	texture.specularpowermod = 1;
 	texture.transparentsort = TRANSPARENTSORT_DISTANCE;

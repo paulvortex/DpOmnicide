@@ -310,6 +310,7 @@ cvar_t r_shadow_shadowmapping_vsdct = {CVAR_SAVE, "r_shadow_shadowmapping_vsdct"
 cvar_t r_shadow_shadowmapping_minsize = {CVAR_SAVE, "r_shadow_shadowmapping_minsize", "32", "shadowmap size limit"};
 cvar_t r_shadow_shadowmapping_maxsize = {CVAR_SAVE, "r_shadow_shadowmapping_maxsize", "512", "shadowmap size limit"};
 cvar_t r_shadow_shadowmapping_precision = {CVAR_SAVE, "r_shadow_shadowmapping_precision", "1", "makes shadowmaps have a maximum resolution of this number of pixels per light source radius unit such that, for example, at precision 0.5 a light with radius 200 will have a maximum resolution of 100 pixels"};
+cvar_t r_shadow_shadowmapping_lod = {CVAR_SAVE, "r_shadow_shadowmapping_lod", "1", "enable level-of-detail shadowmap autoscaling"};
 //cvar_t r_shadow_shadowmapping_lod_bias = {CVAR_SAVE, "r_shadow_shadowmapping_lod_bias", "16", "shadowmap size bias"};
 //cvar_t r_shadow_shadowmapping_lod_scale = {CVAR_SAVE, "r_shadow_shadowmapping_lod_scale", "128", "shadowmap size scaling parameter"};
 cvar_t r_shadow_shadowmapping_bordersize = {CVAR_SAVE, "r_shadow_shadowmapping_bordersize", "4", "shadowmap size bias for filtering"};
@@ -757,6 +758,7 @@ void R_Shadow_Init(void)
 	Cvar_RegisterVariable(&r_shadow_shadowmapping_bordersize);
 	Cvar_RegisterVariable(&r_shadow_shadowmapping_nearclip);
 	Cvar_RegisterVariable(&r_shadow_shadowmapping_bias);
+	Cvar_RegisterVariable(&r_shadow_shadowmapping_lod);
 	Cvar_RegisterVariable(&r_shadow_shadowmapping_polygonfactor);
 	Cvar_RegisterVariable(&r_shadow_shadowmapping_polygonoffset);
 	Cvar_RegisterVariable(&r_shadow_sortsurfaces);
@@ -4251,10 +4253,15 @@ static void R_Shadow_DrawLight(rtlight_t *rtlight)
 	nearestpoint[2] = bound(rtlight->cullmins[2], r_refdef.view.origin[2], rtlight->cullmaxs[2]);
 	distance = VectorDistance(nearestpoint, r_refdef.view.origin);
 
-	lodlinear = (rtlight->radius * r_shadow_shadowmapping_precision.value) / sqrt(max(1.0f, distance/rtlight->radius));
-	//lodlinear = (int)(r_shadow_shadowmapping_lod_bias.value + r_shadow_shadowmapping_lod_scale.value * rtlight->radius / max(1.0f, distance));
+	if (!r_shadow_shadowmapping_lod.integer)
+		lodlinear = rtlight->radius * r_shadow_shadowmapping_precision.value;
+	else
+	{
+		lodlinear = (rtlight->radius * r_shadow_shadowmapping_precision.value) / sqrt(max(1.0f, distance/rtlight->radius));
+		//lodlinear = (int)(r_shadow_shadowmapping_lod_bias.value + r_shadow_shadowmapping_lod_scale.value * rtlight->radius / max(1.0f, distance));
+	}
 	lodlinear = bound(r_shadow_shadowmapping_minsize.integer, lodlinear, r_shadow_shadowmapmaxsize);
-
+	
 	if (castshadows && r_shadow_shadowmode == R_SHADOW_SHADOWMODE_SHADOWMAP2D)
 	{
 		float borderbias;
