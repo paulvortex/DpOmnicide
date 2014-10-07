@@ -2380,6 +2380,8 @@ void Mod_LoadQ3Shaders(void)
 					//dpselfshadowing <scale> <offsetscale> bias/match/match8/match16 <h>
 					if (!strcasecmp(parameter[1], "disable") || !strcasecmp(parameter[1], "none") || !strcasecmp(parameter[1], "off"))
 						shader.selfshadowing = false;
+					else if (!strcasecmp(parameter[1], "enable") || !strcasecmp(parameter[1], "auto") || !strcasecmp(parameter[1], "on"))
+						shader.selfshadowing = true;
 					else
 					{
 						shader.selfshadowing = true;

@@ -182,7 +182,7 @@ cvar_t r_glsl_selfshadowing_scale = {CVAR_SAVE, "r_glsl_selfshadowing_scale", "1
 cvar_t r_glsl_selfshadowing_offsetscale = {CVAR_SAVE, "r_glsl_selfshadowing_offsetscale", "1", "how deep the displacement is used to calculate self shadowing. based on r_glsl_offsetmapping_scale"};
 cvar_t r_glsl_selfshadowing_lightmap = {CVAR_SAVE, "r_glsl_selfshadowing_lightmap", "1", "apply self shadowing on deluxemapped surfaces and model shading"};
 cvar_t r_glsl_selfshadowing_lightmap_scale = {CVAR_SAVE, "r_glsl_selfshadowing_lightmap_scale", "0.333", "addition scale applied during lightmap/deluxemap/lightdirection pass"};
-cvar_t r_glsl_selfshadowing_lightmap_offsetscale = {CVAR_SAVE, "r_glsl_selfshadowing_lightmap_offsetscale", "1.5", "addition scale applied during lightmap/deluxemap/lightdirection pass"};
+cvar_t r_glsl_selfshadowing_lightmap_offsetscale = {CVAR_SAVE, "r_glsl_selfshadowing_lightmap_offsetscale", "1.2", "addition scale applied during lightmap/deluxemap/lightdirection pass"};
 cvar_t r_glsl_postprocess = {CVAR_SAVE, "r_glsl_postprocess", "0", "use a GLSL postprocessing shader"};
 cvar_t r_glsl_postprocess_uservec1 = {CVAR_SAVE, "r_glsl_postprocess_uservec1", "0 0 0 0", "a 4-component vector to pass as uservec1 to the postprocessing shader (only useful if default.glsl has been customized)"};
 cvar_t r_glsl_postprocess_uservec2 = {CVAR_SAVE, "r_glsl_postprocess_uservec2", "0 0 0 0", "a 4-component vector to pass as uservec2 to the postprocessing shader (only useful if default.glsl has been customized)"};
@@ -677,7 +677,6 @@ shaderpermutationinfo_t shaderpermutationinfo[SHADERPERMUTATION_COUNT] =
 	{"#define USEVERTEXTEXTUREBLEND\n", " vertextextureblend"},
 	{"#define USEVIEWTINT\n", " viewtint"},
 	{"#define USECOLORMAPPING\n", " colormapping"},
-	{"#define USESATURATION\n", " saturation"},
 	{"#define USEFOGINSIDE\n", " foginside"},
 	{"#define USEFOGOUTSIDE\n", " fogoutside"},
 	{"#define USEFOGHEIGHTTEXTURE\n", " fogheighttexture"},
@@ -687,7 +686,6 @@ shaderpermutationinfo_t shaderpermutationinfo[SHADERPERMUTATION_COUNT] =
 	{"#define USEGLOW\n", " glow"},
 	{"#define USEBLOOM\n", " bloom"},
 	{"#define USESPECULAR\n", " specular"},
-	{"#define USEPOSTPROCESSING\n", " postprocessing"},
 	{"#define USEREFLECTION\n", " reflection"},
 	{"#define USEOFFSETMAPPING\n", " offsetmapping"},
 	{"#define USEOFFSETMAPPING_RELIEFMAPPING\n", " reliefmapping"},
@@ -923,9 +921,12 @@ enum
 	SHADERSTATICPARM_CELOUTLINES = 12, ///< celoutline (depth buffer analysis to produce outlines)
 	SHADERSTATICPARM_FXAA = 13, ///< fast approximate anti aliasing
 	SHADERSTATICPARM_SUNLIGHT = 14, // sunlight
-	SHADERSTATICPARM_BOUNCEGRIDDIRECTIONAL = 15 // use 16-component pixels in bouncegrid texture for directional lighting rather than standard 4-component
+	SHADERSTATICPARM_BOUNCEGRIDDIRECTIONAL = 15, // use 16-component pixels in bouncegrid texture for directional lighting rather than standard 4-component
+	SHADERSTATICPARM_POSTPROCESSING = 16, ///< user defined postprocessing (postprocessing only)
+	SHADERSTATICPARM_SATURATION = 17 ///< saturation (postprocessing only)
 };
-#define SHADERSTATICPARMS_COUNT 15
+
+#define SHADERSTATICPARMS_COUNT 18
 
 static const char *shaderstaticparmstrings_list[SHADERSTATICPARMS_COUNT];
 static int shaderstaticparms_count = 0;
@@ -950,6 +951,7 @@ qboolean R_CompileShader_CheckStaticParms(void)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_EXACTSPECULARMATH);
 	if (r_glsl_postprocess.integer)
 	{
+		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_POSTPROCESSING);
 		if (r_glsl_postprocess_uservec1_enable.integer)
 			R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_POSTPROCESS_USERVEC1);
 		if (r_glsl_postprocess_uservec2_enable.integer)
@@ -963,7 +965,6 @@ qboolean R_CompileShader_CheckStaticParms(void)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_FXAA);
 	if (r_glsl_offsetmapping_lod.integer && r_glsl_offsetmapping_lod_distance.integer > 0)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_OFFSETMAPPING_USELOD);
-
 	if (r_shadow_shadowmapsampler)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_SHADOWSAMPLER);
 	if (r_shadow_shadowmappcf > 1)
@@ -978,7 +979,8 @@ qboolean R_CompileShader_CheckStaticParms(void)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_SUNLIGHT);
 	if (r_shadow_bouncegridtexture && cl.csqc_vidvars.drawworld && r_shadow_bouncegriddirectional)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_BOUNCEGRIDDIRECTIONAL);
-
+	if (!R_Stereo_ColorMasking() && r_glsl_saturation.value != 1)
+		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_SATURATION);
 	return memcmp(r_compileshader_staticparms, r_compileshader_staticparms_save, sizeof(r_compileshader_staticparms)) != 0;
 }
 
@@ -1008,6 +1010,8 @@ static void R_CompileShader_AddStaticParms(unsigned int mode, unsigned int permu
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_FXAA, "USEFXAA");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_SUNLIGHT, "USESUNLIGHT");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_BOUNCEGRIDDIRECTIONAL, "USEBOUNCEGRIDDIRECTIONAL");
+	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_POSTPROCESSING, "USEPOSTPROCESSING");
+	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_SATURATION, "USESATURATION");
 }
 
 /// information about each possible shader permutation
@@ -2345,7 +2349,7 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			case OFFSETMAPPING_OFF: break;
 			}
 		}
-		if (r_glsl_selfshadowing.integer && rsurface.rtlight->shadow && rsurface.texture->selfshadowing && haveheightmap)
+		if (r_glsl_selfshadowing.integer && rsurface.texture->selfshadowing && haveheightmap)
 			permutation |= SHADERPERMUTATION_SELFSHADOWING;
 		if (rsurface.texture->currentmaterialflags & MATERIALFLAG_VERTEXTEXTUREBLEND)
 			permutation |= SHADERPERMUTATION_VERTEXTEXTUREBLEND;
@@ -6838,9 +6842,7 @@ static void R_BlendView(int fbo, rtexture_t *depthtexture, rtexture_t *colortext
 		permutation =
 			  (r_fb.bloomtexture[r_fb.bloomindex] ? SHADERPERMUTATION_BLOOM : 0)
 			| (r_refdef.viewblend[3] > 0 ? SHADERPERMUTATION_VIEWTINT : 0)
-			| ((v_glslgamma.value && !vid_gammatables_trivial && !r_glsl_texturegamma.integer) ? SHADERPERMUTATION_GAMMARAMPS : 0)
-			| (r_glsl_postprocess.integer ? SHADERPERMUTATION_POSTPROCESSING : 0)
-			| ((!R_Stereo_ColorMasking() && r_glsl_saturation.value != 1) ? SHADERPERMUTATION_SATURATION : 0);
+			| ((v_glslgamma.value && !vid_gammatables_trivial && !r_glsl_texturegamma.integer) ? SHADERPERMUTATION_GAMMARAMPS : 0);
 
 		if (r_fb.colortexture)
 		{

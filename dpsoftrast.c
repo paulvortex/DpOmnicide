@@ -3282,10 +3282,6 @@ static void DPSOFTRAST_PixelShader_PostProcess(DPSOFTRAST_State_Thread *thread, 
 		DPSOFTRAST_Draw_Span_AddBloomBGRA8(triangle, span, buffer_FragColorbgra8, buffer_FragColorbgra8, buffer_texture_colorbgra8, thread->uniform4f + DPSOFTRAST_UNIFORM_BloomColorSubtract * 4);
 	}
 	DPSOFTRAST_Draw_Span_MixUniformColorBGRA8(triangle, span, buffer_FragColorbgra8, buffer_FragColorbgra8, thread->uniform4f + DPSOFTRAST_UNIFORM_ViewTintColor * 4);
-	if (thread->shader_permutation & SHADERPERMUTATION_SATURATION)
-	{
-		// TODO: implement saturation
-	}
 	if (thread->shader_permutation & SHADERPERMUTATION_GAMMARAMPS)
 	{
 		// TODO: implement gammaramps
