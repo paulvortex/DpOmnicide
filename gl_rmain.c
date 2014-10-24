@@ -88,6 +88,7 @@ cvar_t r_shownormals = {0, "r_shownormals", "0", "shows per-vertex surface norma
 cvar_t r_showlighting = {0, "r_showlighting", "0", "shows areas lit by lights, useful for finding out why some areas of a map render slowly (bright orange = lots of passes = slow), a value of 2 disables depth testing which can be interesting but not very useful"};
 cvar_t r_showshadowvolumes = {0, "r_showshadowvolumes", "0", "shows areas shadowed by lights, useful for finding out why some areas of a map render slowly (bright blue = lots of passes = slow), a value of 2 disables depth testing which can be interesting but not very useful"};
 cvar_t r_showcollisionbrushes = {0, "r_showcollisionbrushes", "0", "draws collision brushes in quake3 maps (mode 1), mode 2 disables rendering of world (trippy!)"};
+cvar_t r_showcollisionbrushes_filter = {0, "r_showcollisionbrushes_filter", "0", "set a filter for collision brushes render: 0 draws all brushes, 1 draws only BIH brushes, 2 draws only BIH collision triangles, 3 draws only BIH render triangles."};
 cvar_t r_showcollisionbrushes_polygonfactor = {0, "r_showcollisionbrushes_polygonfactor", "-1", "expands outward the brush polygons a little bit, used to make collision brushes appear infront of walls"};
 cvar_t r_showcollisionbrushes_polygonoffset = {0, "r_showcollisionbrushes_polygonoffset", "0", "nudges brush polygon depth in hardware depth units, used to make collision brushes appear infront of walls"};
 cvar_t r_showdisabledepthtest = {0, "r_showdisabledepthtest", "0", "disables depth testing on r_show* cvars, allowing you to see what hidden geometry the graphics card is processing"};
@@ -140,7 +141,9 @@ cvar_t r_transparent_sortmaxdist = {CVAR_SAVE, "r_transparent_sortmaxdist", "327
 cvar_t r_transparent_sortarraysize = {CVAR_SAVE, "r_transparent_sortarraysize", "4096", "number of distance-sorting layers"};
 cvar_t r_celshading = {CVAR_SAVE, "r_celshading", "0", "cartoon-style light shading (OpenGL 2.x only)"}; // FIXME remove OpenGL 2.x only once implemented for DX9
 cvar_t r_celoutlines = {CVAR_SAVE, "r_celoutlines", "0", "cartoon-style outlines (requires r_shadow_deferred; OpenGL 2.x only)"}; // FIXME remove OpenGL 2.x only once implemented for DX9
-
+cvar_t r_celtexturing = {CVAR_SAVE, "r_celtexturing", "0", "cartoon-style texturing (uses average color for textures; OpenGL 2.x only). A value of this controls brightness of texture average color. Note: currently only DDS images have average color loaded."};
+cvar_t r_celtexturing_brightness = {CVAR_SAVE, "r_celtexturing_brightness", "1", "Brightness of texture average color (used for cel texturing)."};
+cvar_t r_celtexturing_mix = {CVAR_SAVE, "r_celtexturing_mix", "1", "Opacity of average color over texture (used for cel texturing)."};
 cvar_t gl_fogenable = {0, "gl_fogenable", "0", "nehahra fog enable (for Nehahra compatibility only)"};
 cvar_t gl_fogdensity = {0, "gl_fogdensity", "0.25", "nehahra fog density (recommend values below 0.1) (for Nehahra compatibility only)"};
 cvar_t gl_fogred = {0, "gl_fogred","0.3", "nehahra fog color red value (for Nehahra compatibility only)"};
@@ -859,6 +862,8 @@ typedef struct r_glsl_permutation_s
 	int loc_OffsetMapping_LodDistance;
 	int loc_OffsetMapping_Bias;
 	int loc_SelfShadowing_Parameters;
+	int loc_Color_Average;
+	int loc_Color_SecondaryAverage;
 	int loc_PixelSize;
 	int loc_ReflectColor;
 	int loc_ReflectFactor;
@@ -919,11 +924,12 @@ enum
 	SHADERSTATICPARM_SHADOWSAMPLER = 10, ///< sampler
 	SHADERSTATICPARM_CELSHADING = 11, ///< celshading (alternative diffuse and specular math)
 	SHADERSTATICPARM_CELOUTLINES = 12, ///< celoutline (depth buffer analysis to produce outlines)
-	SHADERSTATICPARM_FXAA = 13, ///< fast approximate anti aliasing
-	SHADERSTATICPARM_SUNLIGHT = 14, // sunlight
-	SHADERSTATICPARM_BOUNCEGRIDDIRECTIONAL = 15, // use 16-component pixels in bouncegrid texture for directional lighting rather than standard 4-component
-	SHADERSTATICPARM_POSTPROCESSING = 16, ///< user defined postprocessing (postprocessing only)
-	SHADERSTATICPARM_SATURATION = 17 ///< saturation (postprocessing only)
+	SHADERSTATICPARM_CELTEXTURING = 13, //<celtexturing (use average color for diffuse)
+	SHADERSTATICPARM_FXAA = 14, ///< fast approximate anti aliasing
+	SHADERSTATICPARM_SUNLIGHT = 15, // sunlight
+	SHADERSTATICPARM_BOUNCEGRIDDIRECTIONAL = 16, // use 16-component pixels in bouncegrid texture for directional lighting rather than standard 4-component
+	SHADERSTATICPARM_POSTPROCESSING = 17, ///< user defined postprocessing (postprocessing only)
+	SHADERSTATICPARM_SATURATION = 18 ///< saturation (postprocessing only)
 };
 
 #define SHADERSTATICPARMS_COUNT 18
@@ -975,6 +981,8 @@ qboolean R_CompileShader_CheckStaticParms(void)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_CELSHADING);
 	if (r_celoutlines.integer)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_CELOUTLINES);
+	if (r_celtexturing.integer)
+		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_CELTEXTURING);
 	if (r_sunlight.integer)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_SUNLIGHT);
 	if (r_shadow_bouncegridtexture && cl.csqc_vidvars.drawworld && r_shadow_bouncegriddirectional)
@@ -1007,6 +1015,7 @@ static void R_CompileShader_AddStaticParms(unsigned int mode, unsigned int permu
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_SHADOWSAMPLER, "USESHADOWSAMPLER");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_CELSHADING, "USECELSHADING");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_CELOUTLINES, "USECELOUTLINES");
+	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_CELTEXTURING, "USECELTEXTURING");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_FXAA, "USEFXAA");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_SUNLIGHT, "USESUNLIGHT");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_BOUNCEGRIDDIRECTIONAL, "USEBOUNCEGRIDDIRECTIONAL");
@@ -1277,6 +1286,8 @@ static void R_GLSL_CompilePermutation(r_glsl_permutation_t *p, unsigned int mode
 		p->loc_Color_Glow                 = qglGetUniformLocation(p->program, "Color_Glow");
 		p->loc_Color_Pants                = qglGetUniformLocation(p->program, "Color_Pants");
 		p->loc_Color_Shirt                = qglGetUniformLocation(p->program, "Color_Shirt");
+		p->loc_Color_Average              = qglGetUniformLocation(p->program, "Color_Average");
+		p->loc_Color_SecondaryAverage     = qglGetUniformLocation(p->program, "Color_SecondaryAverage");
 		p->loc_DeferredColor_Ambient      = qglGetUniformLocation(p->program, "DeferredColor_Ambient");
 		p->loc_DeferredColor_Diffuse      = qglGetUniformLocation(p->program, "DeferredColor_Diffuse");
 		p->loc_DeferredColor_Specular     = qglGetUniformLocation(p->program, "DeferredColor_Specular");
@@ -2208,6 +2219,7 @@ extern rtexture_t *r_shadow_prepasslightingspeculartexture;
 #define BLENDFUNC_ALLOWS_FOG           2
 #define BLENDFUNC_ALLOWS_FOG_HACK0     4
 #define BLENDFUNC_ALLOWS_FOG_HACKALPHA 8
+#define BLENDFUNC_FORBID_CELTEXTURING  16
 #define BLENDFUNC_ALLOWS_ANYFOG        (BLENDFUNC_ALLOWS_FOG | BLENDFUNC_ALLOWS_FOG_HACK0 | BLENDFUNC_ALLOWS_FOG_HACKALPHA)
 static int R_BlendFuncFlags(int src, int dst)
 {
@@ -2224,7 +2236,7 @@ static int R_BlendFuncFlags(int src, int dst)
 
 	// these checks are the output of fogeval.pl
 
-	r |= BLENDFUNC_ALLOWS_COLORMOD;
+	r |= BLENDFUNC_ALLOWS_COLORMOD + BLENDFUNC_FORBID_CELTEXTURING;
 	if(src == GL_DST_ALPHA && dst == GL_ONE) r |= BLENDFUNC_ALLOWS_FOG_HACK0;
 	if(src == GL_DST_ALPHA && dst == GL_ONE_MINUS_DST_ALPHA) r |= BLENDFUNC_ALLOWS_FOG;
 	if(src == GL_DST_COLOR && dst == GL_ONE_MINUS_SRC_ALPHA) r &= ~BLENDFUNC_ALLOWS_COLORMOD;
@@ -2234,7 +2246,7 @@ static int R_BlendFuncFlags(int src, int dst)
 	if(src == GL_DST_COLOR && dst == GL_ZERO) r &= ~BLENDFUNC_ALLOWS_COLORMOD;
 	if(src == GL_ONE && dst == GL_ONE) r |= BLENDFUNC_ALLOWS_FOG_HACK0;
 	if(src == GL_ONE && dst == GL_ONE_MINUS_SRC_ALPHA) r |= BLENDFUNC_ALLOWS_FOG_HACKALPHA;
-	if(src == GL_ONE && dst == GL_ZERO) r |= BLENDFUNC_ALLOWS_FOG;
+	if(src == GL_ONE && dst == GL_ZERO) { r |= BLENDFUNC_ALLOWS_FOG; r &= ~BLENDFUNC_FORBID_CELTEXTURING; }
 	if(src == GL_ONE_MINUS_DST_ALPHA && dst == GL_DST_ALPHA) r |= BLENDFUNC_ALLOWS_FOG;
 	if(src == GL_ONE_MINUS_DST_ALPHA && dst == GL_ONE) r |= BLENDFUNC_ALLOWS_FOG_HACK0;
 	if(src == GL_ONE_MINUS_DST_COLOR && dst == GL_SRC_COLOR) r |= BLENDFUNC_ALLOWS_FOG;
@@ -2244,7 +2256,7 @@ static int R_BlendFuncFlags(int src, int dst)
 	if(src == GL_ONE_MINUS_SRC_COLOR && dst == GL_SRC_COLOR) r &= ~BLENDFUNC_ALLOWS_COLORMOD;
 	if(src == GL_SRC_ALPHA && dst == GL_ONE) r |= BLENDFUNC_ALLOWS_FOG_HACK0;
 	if(src == GL_SRC_ALPHA && dst == GL_ONE_MINUS_SRC_ALPHA) r |= BLENDFUNC_ALLOWS_FOG;
-	if(src == GL_ZERO && dst == GL_ONE) r |= BLENDFUNC_ALLOWS_FOG;
+	if(src == GL_ZERO && dst == GL_ONE) { r |= BLENDFUNC_ALLOWS_FOG; r &= ~BLENDFUNC_FORBID_CELTEXTURING; }
 	if(src == GL_ZERO && dst == GL_SRC_COLOR) r &= ~BLENDFUNC_ALLOWS_COLORMOD;
 
 	return r;
@@ -2925,6 +2937,28 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 				qglUniform3f(r_glsl_permutation->loc_Color_Shirt, rsurface.colormap_shirtcolor[0], rsurface.colormap_shirtcolor[1], rsurface.colormap_shirtcolor[2]);
 			else
 				qglUniform3f(r_glsl_permutation->loc_Color_Shirt, 0, 0, 0);
+		}
+		if (r_glsl_permutation->loc_Color_Average >= 0)
+		{
+			float *avgcolor = R_TextureAverageColor(rsurface.texture->basetexture);
+			float avgmix = (blendfuncflags & BLENDFUNC_FORBID_CELTEXTURING && mode != SHADERMODE_LIGHTSOURCE) ? 0.0 : 1.0;
+			if (avgcolor && r_celtexturing.integer)
+				qglUniform4f(r_glsl_permutation->loc_Color_Average, avgcolor[0] * r_celtexturing_brightness.value, avgcolor[1] * r_celtexturing_brightness.value, avgcolor[2] * r_celtexturing_brightness.value, avgmix * r_celtexturing_mix.value);
+			else if (avgcolor)
+				qglUniform4f(r_glsl_permutation->loc_Color_Average, avgcolor[0], avgcolor[1], avgcolor[2], avgmix);
+			else
+				qglUniform4f(r_glsl_permutation->loc_Color_Average, 0.5, 0.5, 0.5, avgmix);
+		}
+		if (r_glsl_permutation->loc_Color_SecondaryAverage >= 0) 
+		{
+			float *avgcolor = R_TextureAverageColor(rsurface.texture->backgroundbasetexture);
+			float avgmix = (blendfuncflags & BLENDFUNC_FORBID_CELTEXTURING && mode != SHADERMODE_LIGHTSOURCE) ? 0.0 : 1.0;
+			if (avgcolor && r_celtexturing.integer)
+				qglUniform4f(r_glsl_permutation->loc_Color_SecondaryAverage, avgcolor[0] * r_celtexturing_brightness.value, avgcolor[1] * r_celtexturing_brightness.value, avgcolor[2] * r_celtexturing_brightness.value, avgmix * r_celtexturing_mix.value);
+			else if (avgcolor)
+				qglUniform4f(r_glsl_permutation->loc_Color_SecondaryAverage, avgcolor[0], avgcolor[1], avgcolor[2], avgmix);
+			else
+				qglUniform4f(r_glsl_permutation->loc_Color_SecondaryAverage, 0.5, 0.5, 0.5, avgmix);
 		}
 		if (r_glsl_permutation->loc_FogPlane >= 0) qglUniform4f(r_glsl_permutation->loc_FogPlane, rsurface.fogplane[0], rsurface.fogplane[1], rsurface.fogplane[2], rsurface.fogplane[3]);
 		if (r_glsl_permutation->loc_FogPlaneViewDist >= 0) qglUniform1f(r_glsl_permutation->loc_FogPlaneViewDist, rsurface.fogplaneviewdist);
@@ -4412,6 +4446,7 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_showlighting);
 	Cvar_RegisterVariable(&r_showshadowvolumes);
 	Cvar_RegisterVariable(&r_showcollisionbrushes);
+	Cvar_RegisterVariable(&r_showcollisionbrushes_filter);
 	Cvar_RegisterVariable(&r_showcollisionbrushes_polygonfactor);
 	Cvar_RegisterVariable(&r_showcollisionbrushes_polygonoffset);
 	Cvar_RegisterVariable(&r_showdisabledepthtest);
@@ -4506,6 +4541,9 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_sunlight_intensity);
 	Cvar_RegisterVariable(&r_celshading);
 	Cvar_RegisterVariable(&r_celoutlines);
+	Cvar_RegisterVariable(&r_celtexturing);
+	Cvar_RegisterVariable(&r_celtexturing_brightness);
+	Cvar_RegisterVariable(&r_celtexturing_mix);
 	Cvar_RegisterVariable(&r_water);
 	Cvar_RegisterVariable(&r_water_resolutionmultiplier);
 	Cvar_RegisterVariable(&r_water_clippingplanebias);
@@ -12445,15 +12483,15 @@ static void R_DrawModelDecals(void)
 }
 
 extern cvar_t mod_collision_bih;
-static void R_DrawDebugModel(void)
+static void R_DrawDebugModel(entity_render_t *ent, dp_model_t *model)
 {
-	entity_render_t *ent = rsurface.entity;
 	int i, j, flagsmask;
 	const msurface_t *surface;
-	dp_model_t *model = ent->model;
 
-	if (!sv.active  && !cls.demoplayback && ent != r_refdef.scene.worldentity)
+	if (!sv.active && !cls.demoplayback && ent != r_refdef.scene.worldentity)
 		return;
+
+	rsurface.entity = ent; // vortex: bugfix
 
 	if (r_showoverdraw.value > 0)
 	{
@@ -12497,21 +12535,28 @@ static void R_DrawDebugModel(void)
 
 	if (r_showcollisionbrushes.value > 0 && model->collision_bih.numleafs)
 	{
-		int triangleindex;
 		int bihleafindex;
 		qboolean cullbox = false;
 		const q3mbrush_t *brush;
 		const bih_t *bih = &model->collision_bih;
 		const bih_leaf_t *bihleaf;
+		const int *e;
 		float vertex3f[3][3];
+
+		//R_EntityMatrix(&identitymatrix);
 		GL_PolygonOffset(r_refdef.polygonfactor + r_showcollisionbrushes_polygonfactor.value, r_refdef.polygonoffset + r_showcollisionbrushes_polygonoffset.value);
-		for (bihleafindex = 0, bihleaf = bih->leafs;bihleafindex < bih->numleafs;bihleafindex++, bihleaf++)
+		for (bihleafindex = 0;bihleafindex < bih->numleafs;bihleafindex++)
 		{
+			bihleaf = &bih->leafs[bihleafindex];
+
 			if (cullbox && R_CullBox(bihleaf->mins, bihleaf->maxs))
 				continue;
+
 			switch (bihleaf->type)
 			{
 			case BIH_BRUSH:
+				if (r_showcollisionbrushes_filter.integer != 0 && r_showcollisionbrushes_filter.integer != 1)
+					continue;
 				brush = model->brush.data_brushes + bihleaf->itemindex;
 				if (brush->colbrushf && brush->colbrushf->numtriangles)
 				{
@@ -12521,19 +12566,23 @@ static void R_DrawDebugModel(void)
 				}
 				break;
 			case BIH_COLLISIONTRIANGLE:
-				triangleindex = bihleaf->itemindex;
-				VectorCopy(model->brush.data_collisionvertex3f + 3*model->brush.data_collisionelement3i[triangleindex*3+0], vertex3f[0]);
-				VectorCopy(model->brush.data_collisionvertex3f + 3*model->brush.data_collisionelement3i[triangleindex*3+1], vertex3f[1]);
-				VectorCopy(model->brush.data_collisionvertex3f + 3*model->brush.data_collisionelement3i[triangleindex*3+2], vertex3f[2]);
+				if (r_showcollisionbrushes_filter.integer != 0 && r_showcollisionbrushes_filter.integer != 2)
+					continue;
+				e = model->brush.data_collisionelement3i + bihleaf->itemindex * 3;
+				VectorCopy(model->brush.data_collisionvertex3f + e[0] * 3, vertex3f[0]);
+				VectorCopy(model->brush.data_collisionvertex3f + e[1] * 3, vertex3f[1]);
+				VectorCopy(model->brush.data_collisionvertex3f + e[2] * 3, vertex3f[2]);
 				GL_Color((bihleafindex & 31) * (1.0f / 32.0f) * r_refdef.view.colorscale, ((bihleafindex >> 5) & 31) * (1.0f / 32.0f) * r_refdef.view.colorscale, ((bihleafindex >> 10) & 31) * (1.0f / 32.0f) * r_refdef.view.colorscale, r_showcollisionbrushes.value);
 				R_Mesh_PrepareVertices_Generic_Arrays(3, vertex3f[0], NULL, NULL);
 				R_Mesh_Draw(0, 3, 0, 1, polygonelement3i, NULL, 0, polygonelement3s, NULL, 0);
 				break;
 			case BIH_RENDERTRIANGLE:
-				triangleindex = bihleaf->itemindex;
-				VectorCopy(model->surfmesh.data_vertex3f + 3*model->surfmesh.data_element3i[triangleindex*3+0], vertex3f[0]);
-				VectorCopy(model->surfmesh.data_vertex3f + 3*model->surfmesh.data_element3i[triangleindex*3+1], vertex3f[1]);
-				VectorCopy(model->surfmesh.data_vertex3f + 3*model->surfmesh.data_element3i[triangleindex*3+2], vertex3f[2]);
+				if (r_showcollisionbrushes_filter.integer != 0 && r_showcollisionbrushes_filter.integer != 3)
+					continue;
+				e = model->surfmesh.data_element3i + bihleaf->itemindex * 3;
+				VectorCopy(model->surfmesh.data_vertex3f + e[0] * 3, vertex3f[0]);
+				VectorCopy(model->surfmesh.data_vertex3f + e[1] * 3, vertex3f[1]);
+				VectorCopy(model->surfmesh.data_vertex3f + e[2] * 3, vertex3f[2]);
 				GL_Color((bihleafindex & 31) * (1.0f / 32.0f) * r_refdef.view.colorscale, ((bihleafindex >> 5) & 31) * (1.0f / 32.0f) * r_refdef.view.colorscale, ((bihleafindex >> 10) & 31) * (1.0f / 32.0f) * r_refdef.view.colorscale, r_showcollisionbrushes.value);
 				R_Mesh_PrepareVertices_Generic_Arrays(3, vertex3f[0], NULL, NULL);
 				R_Mesh_Draw(0, 3, 0, 1, polygonelement3i, NULL, 0, polygonelement3s, NULL, 0);
@@ -12543,6 +12592,7 @@ static void R_DrawDebugModel(void)
 	}
 
 	GL_PolygonOffset(r_refdef.polygonfactor, r_refdef.polygonoffset);
+	//R_EntityMatrix(&rsurface.matrix);
 
 #ifndef USE_GLES2
 	if (r_showtris.integer && qglPolygonMode)
@@ -12705,7 +12755,7 @@ void R_DrawWorldSurfaces(qboolean skysurfaces, qboolean writedepth, qboolean dep
 
 	if (debug)
 	{
-		R_DrawDebugModel();
+		R_DrawDebugModel(r_refdef.scene.worldentity, model);
 		rsurface.entity = NULL; // used only by R_GetCurrentTexture and RSurf_ActiveWorldEntity/RSurf_ActiveModelEntity
 		return;
 	}
@@ -12846,7 +12896,7 @@ void R_DrawModelSurfaces(entity_render_t *ent, qboolean skysurfaces, qboolean wr
 
 	if (debug)
 	{
-		R_DrawDebugModel();
+		R_DrawDebugModel(ent, model);
 		rsurface.entity = NULL; // used only by R_GetCurrentTexture and RSurf_ActiveWorldEntity/RSurf_ActiveModelEntity
 		return;
 	}

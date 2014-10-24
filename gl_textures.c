@@ -280,6 +280,8 @@ typedef struct gltexture_s
 	int glinternalformat;
 	// GL_UNSIGNED_BYTE or GL_UNSIGNED_INT or GL_UNSIGNED_SHORT or GL_FLOAT
 	int gltype;
+	// average texture color (allocated by loader of NULL)
+	float *avgcolor;
 }
 gltexture_t;
 
@@ -472,6 +474,8 @@ void R_FreeTexture(rtexture_t *rt)
 
 	if (glt->inputtexels)
 		Mem_Free(glt->inputtexels);
+	if (glt->avgcolor)
+		Mem_Free(glt->avgcolor);
 	Mem_ExpandableArray_FreeRecord(&texturearray, glt);
 }
 
@@ -2946,7 +2950,7 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *basen
 			avgcolor[0] = (float)(dds[41] / 255.0f);
 			avgcolor[1] = (float)(dds[42] / 255.0f);
 			avgcolor[2] = (float)(dds[43] / 255.0f);
-			avgcolor[3] = 255;
+			avgcolor[3] = 1.0f;
 			genavgcolor = false;
 		}
 		if (textype == TEXTYPE_ETC1 || textype == TEXTYPE_ETC2RGB || textype == TEXTYPE_ETC2RGBA1 || textype == TEXTYPE_ETC2RGBA)
@@ -3137,6 +3141,15 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *basen
 	glt->tiledepth = 1;
 	glt->miplevels = dds_miplevels;
 
+	if(avgcolor)
+	{
+		glt->avgcolor = (float *)Mem_Alloc(texturemempool, sizeof(float) * 4);
+		glt->avgcolor[0] = avgcolor[0];
+		glt->avgcolor[1] = avgcolor[1];
+		glt->avgcolor[2] = avgcolor[2];
+		glt->avgcolor[3] = avgcolor[3];
+	}
+	
 	if(npothack)
 	{
 		for (glt->tilewidth = 1;glt->tilewidth < mipwidth;glt->tilewidth <<= 1);
@@ -3370,6 +3383,11 @@ int R_TextureFlags(rtexture_t *rt)
 textype_t R_TextureType(rtexture_t *rt)
 {
 	return rt ? ((gltexture_t *)rt)->textype->textype : TEXTYPE_RGBA;
+}
+
+float *R_TextureAverageColor(rtexture_t *rt)
+{
+	return rt ? ((gltexture_t *)rt)->avgcolor : NULL;
 }
 
 void R_UpdateTexture(rtexture_t *rt, const unsigned char *data, int x, int y, int z, int width, int height, int depth)

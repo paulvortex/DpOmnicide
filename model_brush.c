@@ -7205,8 +7205,12 @@ bih_t *Mod_MakeCollisionBIH(dp_model_t *model, qboolean userendersurfaces, bih_t
 		}
 	}
 
+	// nothing to build
 	if (!bihnumleafs)
+	{
+		memset(out, 0, sizeof(bih_t));
 		return NULL;
+	}
 
 	// allocate the memory for the BIH leaf nodes
 	bihleafs = (bih_leaf_t *)Mem_Alloc(loadmodel->mempool, sizeof(bih_leaf_t) * bihnumleafs);

@@ -226,6 +226,9 @@ int R_TextureFlags(rtexture_t *rt);
 // returns texture type, as was specified when it was uploaded
 textype_t R_TextureType(rtexture_t *rt);
 
+// returns texture average color as was specified when it was uploaded
+float *R_TextureAverageColor(rtexture_t *rt);
+
 // only frees the texture if TEXF_PERSISTENT is not set
 // also resets the variable
 void R_PurgeTexture(rtexture_t *prt);

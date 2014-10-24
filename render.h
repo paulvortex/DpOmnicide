@@ -110,6 +110,7 @@ extern cvar_t r_shownormals;
 extern cvar_t r_showlighting;
 extern cvar_t r_showshadowvolumes;
 extern cvar_t r_showcollisionbrushes;
+extern cvar_t r_showcollisionbrushes_filter;
 extern cvar_t r_showcollisionbrushes_polygonfactor;
 extern cvar_t r_showcollisionbrushes_polygonoffset;
 extern cvar_t r_showdisabledepthtest;

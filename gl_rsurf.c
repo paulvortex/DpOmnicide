@@ -986,6 +986,9 @@ static void R_Q1BSP_RecursiveGetLightInfo_BIH(r_q1bsp_getlightinfo_t *info, cons
 	float v2[3][3];
 	int nodestack[GETLIGHTINFO_MAXNODESTACK];
 	int nodestackpos = 0;
+	// vortex: early out
+	if (!bih)
+		return;
 	// note: because the BSP leafs are not in the BIH tree, the _BSP function
 	// must be called to mark leafs visible for entity culling...
 	// we start at the root node
