@@ -5012,7 +5012,11 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 	external = false;
 	loadmodel->brushq3.lightmapsize = 128;
 	loadmodel->brushq3.lightmapmerged = false;
-	
+	loadmodel->brushq3.data_lightmaps = NULL;
+	loadmodel->brushq3.data_deluxemaps = NULL;
+	loadmodel->brushq3.skinframe_lightmaps = NULL;
+	loadmodel->brushq3.skinframe_deluxemaps = NULL;
+
 	if (cls.state == ca_dedicated)
 		return;
 	if (mod_q3bsp_nolightmaps.integer)
@@ -5068,6 +5072,7 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 				if(image_width != size || image_height != size)
 					Con_Printf("Mod_Q3BSP_LoadLightmaps: mismatched lightmap size in %s - external lightmap %s/lm_%04d does not match earlier ones\n", loadmodel->name, mapname, count);
 			}
+			Con_Printf("Found %i external lightmaps\n", count);
 		}
 		else
 		{
@@ -5185,27 +5190,25 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 	if ( external && mod_q3bsp_lightmapskinframes.integer ) 
 	{
 		// allocate texture data
+		loadmodel->brushq3.lightmapmerged = false;
 		loadmodel->brushq3.num_lightmapmergedwidthpower = 0;
 		loadmodel->brushq3.num_lightmapmergedheightpower = 0;
+		loadmodel->brushq3.num_lightmapmergedwidthheightdeluxepower = (loadmodel->brushq3.deluxemapping ? 1 : 0);
 		loadmodel->brushq3.num_mergedlightmaps = realcount;
-		loadmodel->brushq3.data_lightmaps = (rtexture_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brushq3.num_mergedlightmaps * sizeof(rtexture_t *));
 		loadmodel->brushq3.skinframe_lightmaps = (skinframe_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brushq3.num_mergedlightmaps * sizeof(skinframe_t *));
 		if( loadmodel->brushq3.deluxemapping )
-		{
-			loadmodel->brushq3.data_deluxemaps = (rtexture_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brushq3.num_mergedlightmaps * sizeof(rtexture_t *));
 			loadmodel->brushq3.skinframe_deluxemaps = (skinframe_t **)Mem_Alloc(loadmodel->mempool, loadmodel->brushq3.num_mergedlightmaps * sizeof(skinframe_t *));
-		}
+		if (loadmodel->texturepool == NULL && cls.state != ca_dedicated)
+			loadmodel->texturepool = R_AllocTexturePool();
 
 		// link up with textures
-		for( lightmapindex = i = 0; i < count; i++, lightmapindex++ )
+		for( lightmapindex = i = 0; i < count && lightmapindex < realcount; i++, lightmapindex++ )
 		{
 			loadmodel->brushq3.skinframe_lightmaps[ lightmapindex ] = skinframes[ i ];
-			loadmodel->brushq3.data_lightmaps[ lightmapindex ] = skinframes[ i ]->base;
 			if (loadmodel->brushq3.deluxemapping)
 			{
 				i++;
 				loadmodel->brushq3.skinframe_deluxemaps[ lightmapindex ] = skinframes[ i ];
-				loadmodel->brushq3.data_deluxemaps[ lightmapindex ] = skinframes[ i ]->base;
 			}
 		}
 	}
@@ -5215,8 +5218,10 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 		Con_DPrintf("Only one external lightmap present\n" );
 
 		// allocate texture data
+		loadmodel->brushq3.lightmapmerged = false;
 		loadmodel->brushq3.num_lightmapmergedwidthpower = 0;
 		loadmodel->brushq3.num_lightmapmergedheightpower = 0;
+		loadmodel->brushq3.num_lightmapmergedwidthheightdeluxepower = (loadmodel->brushq3.deluxemapping ? 1 : 0);
 		loadmodel->brushq3.num_mergedlightmaps = count;
 		loadmodel->brushq3.data_lightmaps = (rtexture_t **)Mem_Alloc(loadmodel->mempool, sizeof(rtexture_t *));
 		if( loadmodel->brushq3.deluxemapping )
@@ -5534,6 +5539,13 @@ static void Mod_Q3BSP_LoadFaces(lump_t *l)
 				if(loadmodel->brushq3.num_originallightmaps != 0)
 					Con_Printf("Mod_Q3BSP_LoadFaces: face #%i (texture \"%s\"): invalid lightmapindex %i (%i lightmaps)\n", i, out->texture->name, n, loadmodel->brushq3.num_originallightmaps);
 				n = -1;
+			}
+			else if (loadmodel->brushq3.skinframe_lightmaps)
+			{
+				out->lightmaptexture = loadmodel->brushq3.skinframe_lightmaps[n >> loadmodel->brushq3.num_lightmapmergedwidthheightdeluxepower]->base;
+				if (loadmodel->brushq3.deluxemapping)
+					out->deluxemaptexture = loadmodel->brushq3.skinframe_deluxemaps[n >> loadmodel->brushq3.num_lightmapmergedwidthheightdeluxepower]->base;
+				loadmodel->lit = true;
 			}
 			else
 			{

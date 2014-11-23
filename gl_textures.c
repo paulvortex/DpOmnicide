@@ -3382,7 +3382,9 @@ int R_TextureFlags(rtexture_t *rt)
 
 textype_t R_TextureType(rtexture_t *rt)
 {
-	return rt ? ((gltexture_t *)rt)->textype->textype : TEXTYPE_RGBA;
+	gltexture_t *glt;
+	glt = (gltexture_t *)rt;
+	return (rt && glt->textype) ? glt->textype->textype : TEXTYPE_RGBA;
 }
 
 float *R_TextureAverageColor(rtexture_t *rt)

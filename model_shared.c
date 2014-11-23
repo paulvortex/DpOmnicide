@@ -4486,8 +4486,16 @@ static void Mod_GenerateLightmaps_CreateLightmaps(dp_model_t *model)
 		if (!surface->num_triangles)
 			continue;
 		lightmapindex = mod_generatelightmaps_lightmaptriangles[surface->num_firsttriangle].lightmapindex;
-		surface->lightmaptexture = model->brushq3.data_lightmaps[lightmapindex];
-		surface->deluxemaptexture = model->brushq3.data_deluxemaps[lightmapindex];
+		if (model->brushq3.skinframe_lightmaps)
+		{
+			surface->lightmaptexture = model->brushq3.skinframe_lightmaps[lightmapindex]->base;
+			surface->deluxemaptexture = model->brushq3.skinframe_deluxemaps[lightmapindex]->base;
+		}
+		else
+		{
+			surface->lightmaptexture = model->brushq3.data_lightmaps[lightmapindex];
+			surface->deluxemaptexture = model->brushq3.data_deluxemaps[lightmapindex];
+		}
 		surface->lightmapinfo = NULL;
 	}
 
