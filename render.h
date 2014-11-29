@@ -529,6 +529,8 @@ typedef struct r_waterstate_waterplane_s
 	qboolean pvsvalid;
 	int camera_entity;
 	vec3_t mins, maxs;
+	vec3_t reflectcolor; // vortex: if 0 0 0, do not render
+	vec3_t refractcolor;
 }
 r_waterstate_waterplane_t;
 

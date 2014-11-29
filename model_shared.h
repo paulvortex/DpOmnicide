@@ -305,6 +305,7 @@ typedef enum q3deform_e
 	Q3DEFORM_WAVE,
 	Q3DEFORM_NORMAL,
 	Q3DEFORM_MOVE,
+	Q3DEFORM_ROUNDWAVE,
 	Q3DEFORM_COUNT
 }
 q3deform_t;
@@ -420,6 +421,7 @@ typedef struct q3shaderinfo_deform_s
 {
 	q3deform_t deform;
 	float parms[Q3DEFORM_MAXPARMS];
+	float parms2[Q3DEFORM_MAXPARMS];
 	q3wavefunc_t wavefunc;
 	float waveparms[Q3WAVEPARMS];
 }

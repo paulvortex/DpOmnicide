@@ -211,7 +211,8 @@ cvar_t r_water_resolutionmultiplier = {CVAR_SAVE, "r_water_resolutionmultiplier"
 cvar_t r_water_refractdistort = {CVAR_SAVE, "r_water_refractdistort", "0.01", "how much water refractions shimmer"};
 cvar_t r_water_reflectdistort = {CVAR_SAVE, "r_water_reflectdistort", "0.01", "how much water reflections shimmer"};
 cvar_t r_water_scissormode = {0, "r_water_scissormode", "3", "scissor (1) or cull (2) or both (3) water renders"};
-cvar_t r_water_lowquality = {0, "r_water_lowquality", "0", "special option to accelerate water rendering, 1 disables shadows and particles, 2 disables all dynamic lights"};
+cvar_t r_water_lowquality = {0, "r_water_lowquality", "0", "special option to accelerate water rendering, 1 disables shadows, particles and deformvertexes, 2 disables all dynamic lights"};
+cvar_t r_water_skipblackplanes = {0, "r_water_skipblackplanes", "1", "skips useless viewport rendering for reflect/refract textures which is set to black"};
 cvar_t r_water_hideplayer = {CVAR_SAVE, "r_water_hideplayer", "0", "if set to 1 then player will be hidden in refraction views, if set to 2 then player will also be hidden in reflection views, player is always visible in camera views"};
 cvar_t r_water_fbo = {CVAR_SAVE, "r_water_fbo", "1", "enables use of render to texture for water effects, otherwise copy to texture is used (slower)"};
 
@@ -4551,6 +4552,7 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_water_reflectdistort);
 	Cvar_RegisterVariable(&r_water_scissormode);
 	Cvar_RegisterVariable(&r_water_lowquality);
+	Cvar_RegisterVariable(&r_water_skipblackplanes);
 	Cvar_RegisterVariable(&r_water_hideplayer);
 	Cvar_RegisterVariable(&r_water_fbo);
 
@@ -6098,7 +6100,7 @@ static void R_Water_StartFrame(void)
 
 void R_Water_AddWaterPlane(msurface_t *surface, int entno)
 {
-	int planeindex, bestplaneindex, vertexindex;
+	int planeindex, bestplaneindex, vertexindex, distscore;
 	vec3_t mins, maxs, normal, center, v, n;
 	vec_t planescore, bestplanescore;
 	mplane_t plane;
@@ -6153,7 +6155,9 @@ void R_Water_AddWaterPlane(msurface_t *surface, int entno)
 	{
 		if(p->camera_entity == t->camera_entity)
 		{
-			planescore = 1.0f - DotProduct(plane.normal, p->plane.normal) + fabs(plane.dist - p->plane.dist) * 0.001f;
+			distscore = fabs(plane.dist - p->plane.dist);
+			planescore = 1.0f - DotProduct(plane.normal, p->plane.normal);
+			planescore = planescore + distscore * 0.001f;
 			if (bestplaneindex < 0 || bestplanescore > planescore)
 			{
 				bestplaneindex = planeindex;
@@ -6175,6 +6179,8 @@ void R_Water_AddWaterPlane(msurface_t *surface, int entno)
 		p->materialflags = 0;
 		p->pvsvalid = false;
 		p->camera_entity = t->camera_entity;
+		VectorCopy(surface->texture->reflectcolor4f, p->reflectcolor);
+		VectorCopy(surface->texture->refractcolor4f, p->refractcolor);
 		VectorCopy(mins, p->mins);
 		VectorCopy(maxs, p->maxs);
 	}
@@ -6210,7 +6216,7 @@ static void R_Water_ProcessPlanes(int fbo, rtexture_t *depthtexture, rtexture_t 
 	int myscissor[4];
 	r_refdef_view_t originalview;
 	r_refdef_view_t myview;
-	int planeindex, qualityreduction = 0, old_r_dynamic = 0, old_r_shadows = 0, old_r_worldrtlight = 0, old_r_dlight = 0, old_r_particles = 0, old_r_decals = 0;
+	int planeindex, qualityreduction = 0, old_r_dynamic = 0, old_r_shadows = 0, old_r_worldrtlight = 0, old_r_dlight = 0, old_r_particles = 0, old_r_decals = 0, old_r_deformvertexes = 0;
 	r_waterstate_waterplane_t *p;
 	vec3_t visorigin;
 	qboolean usewaterfbo = (r_viewfbo.integer >= 1 || r_water_fbo.integer >= 1) && vid.support.ext_framebuffer_object && vid.support.arb_texture_non_power_of_two && vid.samples < 2;
@@ -6227,9 +6233,11 @@ static void R_Water_ProcessPlanes(int fbo, rtexture_t *depthtexture, rtexture_t 
 			old_r_shadows = r_shadows.integer;
 			old_r_worldrtlight = r_shadow_realtime_world.integer;
 			old_r_dlight = r_shadow_realtime_dlight.integer;
+			old_r_deformvertexes = r_deformvertexes.integer;
 			Cvar_SetValueQuick(&r_shadows, 0);
 			Cvar_SetValueQuick(&r_shadow_realtime_world, 0);
 			Cvar_SetValueQuick(&r_shadow_realtime_dlight, 0);
+			Cvar_SetValueQuick(&r_deformvertexes, 0);
 		}
 		if (qualityreduction >= 2)
 		{
@@ -6326,21 +6334,22 @@ static void R_Water_ProcessPlanes(int fbo, rtexture_t *depthtexture, rtexture_t 
 				else
 					memset(r_refdef.viewcache.world_pvsbits, 0xFF, r_refdef.scene.worldmodel->brush.num_pvsclusterbytes);
 			}
-
 			r_fb.water.hideplayer = r_water_hideplayer.integer >= 2;
-			R_ResetViewRendering3D(p->fbo_reflection, r_fb.water.depthtexture, p->texture_reflection);
-			R_ClearScreen(r_refdef.fogenabled);
-			if(r_water_scissormode.integer & 2)
-				R_View_UpdateWithScissor(myscissor);
-			else
-				R_View_Update();
-			R_AnimCache_CacheVisibleEntities();
-			if(r_water_scissormode.integer & 1)
-				GL_Scissor(myscissor[0], myscissor[1], myscissor[2], myscissor[3]);
-			R_RenderScene(p->fbo_reflection, r_fb.water.depthtexture, p->texture_reflection);
-
-			if (!p->fbo_reflection)
-				R_Mesh_CopyToTexture(p->texture_reflection, 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
+			if (!r_water_skipblackplanes.integer || p->reflectcolor[0] || p->reflectcolor[1] || p->reflectcolor[2])
+			{
+				R_ResetViewRendering3D(p->fbo_reflection, r_fb.water.depthtexture, p->texture_reflection);
+				R_ClearScreen(r_refdef.fogenabled);
+				if(r_water_scissormode.integer & 2)
+					R_View_UpdateWithScissor(myscissor);
+				else
+					R_View_Update();
+				R_AnimCache_CacheVisibleEntities();
+				if(r_water_scissormode.integer & 1)
+					GL_Scissor(myscissor[0], myscissor[1], myscissor[2], myscissor[3]);
+				R_RenderScene(p->fbo_reflection, r_fb.water.depthtexture, p->texture_reflection);
+				if (!p->fbo_reflection)
+					R_Mesh_CopyToTexture(p->texture_reflection, 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
+			}
 			r_fb.water.hideplayer = false;
 		}
 
@@ -6377,19 +6386,22 @@ static void R_Water_ProcessPlanes(int fbo, rtexture_t *depthtexture, rtexture_t 
 
 			PlaneClassify(&r_refdef.view.clipplane);
 
-			R_ResetViewRendering3D(p->fbo_refraction, r_fb.water.depthtexture, p->texture_refraction);
-			R_ClearScreen(r_refdef.fogenabled);
-			if(r_water_scissormode.integer & 2)
-				R_View_UpdateWithScissor(myscissor);
-			else
-				R_View_Update();
-			R_AnimCache_CacheVisibleEntities();
-			if(r_water_scissormode.integer & 1)
-				GL_Scissor(myscissor[0], myscissor[1], myscissor[2], myscissor[3]);
-			R_RenderScene(p->fbo_refraction, r_fb.water.depthtexture, p->texture_refraction);
+			if (!r_water_skipblackplanes.integer || p->refractcolor[0] || p->refractcolor[1] || p->refractcolor[2])
+			{
+				R_ResetViewRendering3D(p->fbo_refraction, r_fb.water.depthtexture, p->texture_refraction);
+				R_ClearScreen(r_refdef.fogenabled);
+				if(r_water_scissormode.integer & 2)
+					R_View_UpdateWithScissor(myscissor);
+				else
+					R_View_Update();
+				R_AnimCache_CacheVisibleEntities();
+				if(r_water_scissormode.integer & 1)
+					GL_Scissor(myscissor[0], myscissor[1], myscissor[2], myscissor[3]);
+				R_RenderScene(p->fbo_refraction, r_fb.water.depthtexture, p->texture_refraction);
+				if (!p->fbo_refraction)
+					R_Mesh_CopyToTexture(p->texture_refraction, 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
+			}
 
-			if (!p->fbo_refraction)
-				R_Mesh_CopyToTexture(p->texture_refraction, 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
 			r_fb.water.hideplayer = false;
 		}
 		else if (p->materialflags & MATERIALFLAG_CAMERA)
@@ -6470,6 +6482,7 @@ finish:
 			Cvar_SetValueQuick(&r_shadows, old_r_shadows);
 			Cvar_SetValueQuick(&r_shadow_realtime_world, old_r_worldrtlight);
 			Cvar_SetValueQuick(&r_shadow_realtime_dlight, old_r_dlight);
+			Cvar_SetValueQuick(&r_deformvertexes, old_r_deformvertexes);
 		}
 		if (qualityreduction >= 2)
 		{
@@ -9401,6 +9414,18 @@ void RSurf_PrepareVerticesForBatch(int batchneed, int texturenumsurfaces, const 
 			batchneed |= BATCHNEED_ARRAY_VERTEX;
 			needsupdate |= BATCHNEED_VERTEXMESH_VERTEX;
 			break;
+		case Q3DEFORM_ROUNDWAVE:
+			if (!dynamicvertex)
+			{
+				r_refdef.stats[r_stat_batch_dynamic_batches_because_deformvertexes_roundwave] += 1;
+				r_refdef.stats[r_stat_batch_dynamic_surfaces_because_deformvertexes_roundwave] += batchnumsurfaces;
+				r_refdef.stats[r_stat_batch_dynamic_vertices_because_deformvertexes_roundwave] += batchnumvertices;
+				r_refdef.stats[r_stat_batch_dynamic_triangles_because_deformvertexes_roundwave] += batchnumtriangles;
+			}
+			dynamicvertex = true;
+			batchneed |= BATCHNEED_ARRAY_VERTEX | BATCHNEED_ARRAY_NORMAL | BATCHNEED_ARRAY_TEXCOORD;
+			needsupdate |= BATCHNEED_VERTEXMESH_VERTEX | BATCHNEED_VERTEXMESH_NORMAL | BATCHNEED_VERTEXMESH_VECTOR;
+			break;
 		}
 	}
 	switch(rsurface.texture->tcgen.tcgen)
@@ -10025,6 +10050,7 @@ void RSurf_PrepareVerticesForBatch(int batchneed, int texturenumsurfaces, const 
 	// if vertices are deformed (sprite flares and things in maps, possibly
 	// water waves, bulges and other deformations), modify the copied vertices
 	// in place
+	bool rebuildNormals = false;
 	for (deformindex = 0, deform = rsurface.texture->deforms;deformindex < Q3MAXDEFORMS && deform->deform && r_deformvertexes.integer;deformindex++, deform++)
 	{
 		switch (deform->deform)
@@ -10295,6 +10321,52 @@ void RSurf_PrepareVerticesForBatch(int batchneed, int texturenumsurfaces, const 
 			for (j = 0;j < batchnumvertices;j++)
 				VectorAdd(rsurface.batchvertex3f + 3*j, waveparms, rsurface.batchvertex3f + 3*j);
 			break;
+		case Q3DEFORM_ROUNDWAVE:
+			// find a center of a surface (entity center plus shader-set offsets)
+			VectorSet(center, deform->parms2[0], deform->parms2[1], deform->parms2[2]);
+			float numwaves = deform->parms[0] / deform->parms[1];
+			float radius = deform->parms[0];
+			float exponent = deform->parms[2];
+			float *vert, *norm;
+			// now deform vertexes
+			for (j = 0;j < batchnumvertices;j++)
+			{
+				vert = rsurface.batchvertex3f + 3*j;
+				// deform vertex array to make water with round waves
+				VectorSubtract(center, vert, v);
+				animpos = (radius - VectorLength(v)) / radius;
+				animpos = max(0, animpos);
+				if (animpos > 0)
+				{
+					waveparms[0] = deform->waveparms[0];
+					waveparms[1] = deform->waveparms[1] * animpos;
+					waveparms[2] = deform->waveparms[2] + pow(animpos, exponent) * numwaves;
+					waveparms[3] = deform->waveparms[3];
+					scale = R_EvaluateQ3WaveFunc(deform->wavefunc, waveparms);
+					norm = rsurface.batchnormal3f + 3*j;
+					VectorMA(vert, scale, norm, vert);
+				}
+				
+			}
+			rebuildNormals = true;
+			break;
+		}
+	}
+
+	// rebuild normals after deform has ben completed (if sheduled)
+	if (rebuildNormals)
+	{
+		// if we get here, BATCHNEED_ARRAY_NORMAL is in batchneed, so no need to check
+		Mod_BuildNormals(rsurface.batchfirstvertex, batchnumvertices, batchnumtriangles, rsurface.batchvertex3f, rsurface.batchelement3i + 3 * rsurface.batchfirsttriangle, rsurface.batchnormal3f, r_smoothnormals_areaweighting.integer != 0);
+		if(batchneed & BATCHNEED_ARRAY_VECTOR) // otherwise these can stay NULL
+		{
+//				rsurface.batchsvector3f = R_FrameData_Alloc(batchnumvertices * sizeof(float[3]));
+//				rsurface.batchsvector3f_vertexbuffer = NULL;
+//				rsurface.batchsvector3f_bufferoffset = 0;
+//				rsurface.batchtvector3f = R_FrameData_Alloc(batchnumvertices * sizeof(float[3]));
+//				rsurface.batchtvector3f_vertexbuffer = NULL;
+//				rsurface.batchtvector3f_bufferoffset = 0;
+			Mod_BuildTextureVectorsFromNormals(rsurface.batchfirstvertex, batchnumvertices, batchnumtriangles, rsurface.batchvertex3f, rsurface.batchtexcoordtexture2f, rsurface.batchnormal3f, rsurface.batchelement3i + 3 * rsurface.batchfirsttriangle, rsurface.batchsvector3f, rsurface.batchtvector3f, r_smoothnormals_areaweighting.integer != 0);
 		}
 	}
 
@@ -10510,12 +10582,13 @@ static int RSurf_FindWaterPlaneForSurface(const msurface_t *surface)
 {
 	// pick the closest matching water plane
 	int planeindex, vertexindex, bestplaneindex = -1;
-	float d, bestd;
+	float d, bestd = 1048576.0f;
 	vec3_t vert;
 	const float *v;
 	r_waterstate_waterplane_t *p;
 	qboolean prepared = false;
-	bestd = 0;
+	if (r_fb.water.waterplanes)
+		bestplaneindex = 0; // vortex: default to first waterplane
 	for (planeindex = 0, p = r_fb.water.waterplanes;planeindex < r_fb.water.numwaterplanes;planeindex++, p++)
 	{
 		if(p->camera_entity != rsurface.texture->camera_entity)

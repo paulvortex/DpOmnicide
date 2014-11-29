@@ -2442,6 +2442,16 @@ void Mod_LoadQ3Shaders(void)
 							for (i = 0;i < numparameters - 6 && i < Q3WAVEPARMS;i++)
 								shader.deforms[deformindex].waveparms[i] = atof(parameter[i+6]);
 						}
+						else if (!strcasecmp(parameter[1], "roundwave"       ))
+						{
+							shader.deforms[deformindex].deform = Q3DEFORM_ROUNDWAVE;
+							shader.deforms[deformindex].parms2[0] = atof(parameter[5]); // offsetx
+							shader.deforms[deformindex].parms2[1] = atof(parameter[6]); // offsety
+							shader.deforms[deformindex].parms2[2] = atof(parameter[7]); // offsetz
+							shader.deforms[deformindex].wavefunc = Mod_LoadQ3Shaders_EnumerateWaveFunc(parameter[8]);
+							for (i = 0;i < numparameters - 9 && i < Q3WAVEPARMS;i++)
+								shader.deforms[deformindex].waveparms[i] = atof(parameter[i+9]);
+						}
 					}
 				}
 			}
