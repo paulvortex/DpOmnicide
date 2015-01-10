@@ -495,6 +495,7 @@ void Cvar_RegisterVariable (cvar_t *variable)
 			variable->defstring = cvar->defstring;
 			variable->value = atof (variable->string);
 			variable->integer = (int) variable->value;
+			Math_atov(variable->string, variable->vector);
 			// replace cvar with this one...
 			variable->next = cvar->next;
 			if (cvar_vars == cvar)
@@ -536,6 +537,7 @@ void Cvar_RegisterVariable (cvar_t *variable)
 	memcpy ((char *)variable->defstring, oldstr, alloclen);
 	variable->value = atof (variable->string);
 	variable->integer = (int) variable->value;
+	Math_atov(variable->string, variable->vector);
 
 // link the variable in
 // alphanumerical order
