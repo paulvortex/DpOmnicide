@@ -2292,7 +2292,8 @@ static void World_Physics_Frame_BodyFromEntity(world_t *world, prvm_edict_t *ed)
 				Mod_CreateCollisionMesh(model);
 			if (!model->brush.collisionmesh)
 			{
-				Con_Printf("entity %i (classname %s) has no geometry\n", PRVM_NUM_FOR_EDICT(ed), PRVM_GetString(prog, PRVM_gameedictstring(ed, classname)));
+				if (movetype == MOVETYPE_PHYSICS)
+					Con_Printf("entity %i (classname %s) has no geometry\n", PRVM_NUM_FOR_EDICT(ed), PRVM_GetString(prog, PRVM_gameedictstring(ed, classname)));
 				goto treatasbox;
 			}
 
