@@ -934,6 +934,10 @@ static void Mod_BuildAliasSkinFromSkinFrame(texture_t *texture, skinframe_t *ski
 	texture->selfshadowingoffsetscale = 1;
 	texture->selfshadowingoffsetbias = 0;
 	texture->selfshadowingscale = 0;
+	texture->vegetation = false;
+	texture->windamplitudemod = 1;
+	texture->windspeedmod = 1;
+	texture->windtiltmod = 1;
 	texture->specularscalemod = 1;
 	texture->specularpowermod = 1;
 	texture->surfaceflags = 0;
@@ -987,6 +991,51 @@ void Mod_BuildAliasSkinsFromSkinFiles(texture_t *skin, skinfile_t *skinfile, con
 			Con_DPrintf("--> using default\n");
 		Image_StripImageExtension(shadername, stripbuf, sizeof(stripbuf));
 		Mod_LoadTextureFromQ3Shader(skin, stripbuf, true, true, (r_mipskins.integer ? TEXF_MIPMAP : 0) | TEXF_ALPHA | TEXF_PICMIP | TEXF_COMPRESS);
+	}
+}
+
+void Mod_BuildVertexAlpha(dp_model_t *model, msurface_t *surface)
+{
+	float *vertex_color, *pos;
+	int i;
+
+	// do not build vertex alpha
+	if (!surface->texture || !surface->texture->vegetation)
+		return;
+
+	// get vertex color
+	if (!model->surfmesh.data_lightmapcolor4f)
+	{
+		// allocate it
+		model->surfmesh.data_lightmapcolor4f = (float *)Mem_Alloc(model->mempool, model->surfmesh.num_vertices * sizeof(float) * 4);
+		memset(loadmodel->surfmesh.data_lightmapcolor4f, 1, model->surfmesh.num_vertices * sizeof(float) * 4);
+	}
+	vertex_color = loadmodel->surfmesh.data_lightmapcolor4f + 4 * surface->num_firstvertex;
+
+	// calculate vegetation parms for surface
+	pos = loadmodel->surfmesh.data_vertex3f + 3 * surface->num_firstvertex;
+	for (i = 0; i < surface->num_vertices; i++, pos += 3, vertex_color += 4)
+	{
+#if 1
+		// vortex: currently this is a stub to not get alias models which have no vertex alpha distracted
+		vertex_color[ 3 ] = 0;
+#else
+		float f, f2;
+		// vortex: two 4-bit numbers packed into a single byte
+		// 1) a number of entity which used for randomization, 0 to 16 (we want it null)
+		f = 0;
+		// 2) intensity of vegetation deform effect which is: (<vertex_z> - <mins_z> / <vegetation height>) * <vertex alpha> (1)
+		if (surface->texture->vegetationheight <= 0)
+			f = 0;
+		else
+		{
+			f2 = ((pos[ 2 ] - minz) * 4.0f) / surface->texture->vegetationheight;
+			//Con_Printf("f: %f vs %f\n", pos[ 2 ] - surface->mins[2], surface->texture->vegetationheight, f2);
+			f2 = min(max(0, f2), 3.75f);
+			f += floor(f2 * 4.0f + 0.5f) * 16.0f;
+		}
+		vertex_color[ 3 ] = f / 255.0f;
+#endif
 	}
 }
 
@@ -1344,6 +1393,10 @@ void Mod_IDP0_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		loadmodel->PointSuperContents = Mod_CollisionBIH_PointSuperContents_Mesh;
 	}
 
+	// build vertex alpha
+	if (surface->texture->vegetation)
+		Mod_BuildVertexAlpha(loadmodel, surface);
+
 	// because shaders can do somewhat unexpected things, check for unusual features now
 	for (i = 0;i < loadmodel->num_textures;i++)
 	{
@@ -1615,6 +1668,10 @@ void Mod_IDP2_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		loadmodel->PointSuperContents = Mod_CollisionBIH_PointSuperContents_Mesh;
 	}
 
+	// build vertex alpha
+	if (surface->texture->vegetation)
+		Mod_BuildVertexAlpha(loadmodel, surface);
+
 	// because shaders can do somewhat unexpected things, check for unusual features now
 	for (i = 0;i < loadmodel->num_textures;i++)
 	{
@@ -1635,6 +1692,7 @@ void Mod_IDP3_Load(dp_model_t *mod, void *buffer, void *bufferend)
 	md3mesh_t *pinmesh;
 	md3tag_t *pintag;
 	skinfile_t *skinfiles;
+	qboolean anyvegetation = false;
 
 	pinmodel = (md3modelheader_t *)buffer;
 
@@ -1787,6 +1845,9 @@ void Mod_IDP3_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		Mod_BuildAliasSkinsFromSkinFiles(loadmodel->data_textures + i, skinfiles, pinmesh->name, LittleLong(pinmesh->num_shaders) >= 1 ? ((md3shader_t *)((unsigned char *) pinmesh + LittleLong(pinmesh->lump_shaders)))->name : "");
 
 		Mod_ValidateElements(loadmodel->surfmesh.data_element3i + surface->num_firsttriangle * 3, surface->num_triangles, surface->num_firstvertex, surface->num_vertices, __FILE__, __LINE__);
+
+		if (surface->texture->vegetation)
+			anyvegetation = true;
 	}
 	if (loadmodel->surfmesh.data_element3s)
 		for (i = 0;i < loadmodel->surfmesh.num_triangles*3;i++)
@@ -1809,6 +1870,11 @@ void Mod_IDP3_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		loadmodel->TracePoint = Mod_CollisionBIH_TracePoint_Mesh;
 		loadmodel->PointSuperContents = Mod_CollisionBIH_PointSuperContents_Mesh;
 	}
+
+	// build vertex alpha for surfaces
+	if ( anyvegetation )
+		for (i = 0;i < loadmodel->num_surfaces;i++)
+			Mod_BuildVertexAlpha(loadmodel, loadmodel->data_surfaces + i);
 
 	// because shaders can do somewhat unexpected things, check for unusual features now
 	for (i = 0;i < loadmodel->num_textures;i++)

@@ -1652,6 +1652,7 @@ void Mod_LoadQ3Shaders(void)
 	int j;
 	int fileindex;
 	int selfshadowingmode;
+	float windmod;
 	fssearch_t *search;
 	char *f;
 	const char *text;
@@ -1764,6 +1765,12 @@ void Mod_LoadQ3Shaders(void)
 			shader.selfshadowingscale = mod_q3shader_default_selfshadowing_scale.value; 
 			shader.selfshadowingoffsetscale = mod_q3shader_default_offsetmapping_scale.value;
 			shader.selfshadowingoffsetbias = mod_q3shader_default_offsetmapping_bias.value;
+			shader.vegetationmaxamplitude = 999999999;
+			shader.vegetationmaxspeed = 999999999;
+			shader.vegetationmaxrotation = 999999999;
+			shader.windamplitudemod = 1;
+			shader.windspeedmod = 1;
+			shader.windtiltmod = 1;
 			shader.biaspolygonoffset = mod_q3shader_default_polygonoffset.value;
 			shader.biaspolygonfactor = mod_q3shader_default_polygonfactor.value;
 			shader.transparentsort = TRANSPARENTSORT_DISTANCE;
@@ -1771,6 +1778,7 @@ void Mod_LoadQ3Shaders(void)
 			shader.specularpowermod = 1;
 			shader.rtlightambient = 0;
 			selfshadowingmode = 0;
+			windmod = 1.0f;
 			// WHEN ADDING DEFAULTS HERE, REMEMBER TO PUT DEFAULTS IN ALL LOADERS
 			// JUST GREP FOR "specularscalemod = 1".
 
@@ -2405,6 +2413,67 @@ void Mod_LoadQ3Shaders(void)
 						}
 					}
 				}
+				else if (!strcasecmp(parameter[0], "dpvegetation") && numparameters >= 1)
+				{
+					//dpvegetation [plantheight (default 32)] [wave amplitude (default 1)] [wave speed (default 5)] [wave rotation (default 1)]
+					shader.vegetation = true;
+					shader.vegetationheight = 32.0;
+					shader.vegetationwaveamplitude = 1.0;
+					shader.vegetationwavespeed = 5;
+					shader.vegetationwaverotation = 1.5;
+					if (numparameters >= 2)
+						shader.vegetationheight = atof(parameter[1]);
+					if (numparameters >= 3)
+						shader.vegetationwaveamplitude = atof(parameter[2]);
+					if (numparameters >= 4)
+						shader.vegetationwavespeed = atof(parameter[3]);
+					if (numparameters >= 5)
+						shader.vegetationwaverotation = atof(parameter[4]);
+				}
+				else if (!strcasecmp(parameter[0], "dpvegetationmax") && numparameters >= 2)
+				{
+					//dpvegetationmax <maxamplitude> [maxspeed] [maxrotation]
+					shader.vegetationmaxamplitude = atof(parameter[1]);
+					if (numparameters >= 3)
+						shader.vegetationmaxspeed = atof(parameter[2]);
+					if (numparameters >= 4)
+						shader.vegetationmaxrotation = atof(parameter[3]);
+				}
+				else if (!strcasecmp(parameter[0], "dpvegetationmaxamplitude") && numparameters >= 2)
+				{
+					//dpvegetationmaxamplitude <maxvalue>
+					shader.vegetationmaxamplitude = atof(parameter[1]);
+				}
+				else if (!strcasecmp(parameter[0], "dpvegetationmaxspeed") && numparameters >= 2)
+				{
+					//dpvegetationmaxspeed <maxvalue>
+					shader.vegetationmaxspeed = atof(parameter[1]);
+				}
+				else if (!strcasecmp(parameter[0], "dpvegetationmaxrotation") && numparameters >= 2)
+				{
+					//dpvegetationmaxrotation <maxvalue>
+					shader.vegetationmaxrotation = atof(parameter[1]);
+				}
+				else if (!strcasecmp(parameter[0], "dpwindmod") && numparameters >= 2)
+				{
+					//dpwindmod <windscale>
+					windmod = atof(parameter[1]);
+				}
+				else if (!strcasecmp(parameter[0], "dpwindamplitudemod") && numparameters >= 2)
+				{
+					//dpwindamplitudemod <amplitudescale>
+					shader.windamplitudemod = atof(parameter[1]);
+				}
+				else if (!strcasecmp(parameter[0], "dpwindspeedmod") && numparameters >= 2)
+				{
+					//dpwindspeedmod <speedscale>
+					shader.windspeedmod = atof(parameter[1]);
+				}
+				else if (!strcasecmp(parameter[0], "dpwindtiltmod") && numparameters >= 2)
+				{
+					//dpwindtiltmod <speedscale>
+					shader.windtiltmod = atof(parameter[1]);
+				}
 				else if (!strcasecmp(parameter[0], "deformvertexes") && numparameters >= 2)
 				{
 					int i, deformindex;
@@ -2473,6 +2542,10 @@ void Mod_LoadQ3Shaders(void)
 				if (!(selfshadowingmode & 2))
 					shader.selfshadowingoffsetbias = shader.offsetbias;
 			}
+			// apply dpwindmod
+			shader.windamplitudemod *= windmod;
+			shader.windspeedmod *= windmod;
+			shader.windtiltmod *= windmod;
 			// hide this shader if a cvar said it should be killed
 			if (shader.dpshaderkill)
 				shader.numlayers = 0;
@@ -2560,6 +2633,10 @@ qboolean Mod_LoadTextureFromQ3Shader(texture_t *texture, const char *name, qbool
 	texture->selfshadowingscale = 1;
 	texture->selfshadowingoffsetscale = 1;
 	texture->selfshadowingoffsetbias = 0;
+	texture->vegetation = false;
+	texture->windamplitudemod = 1;
+	texture->windspeedmod = 1;
+	texture->windtiltmod = 1;
 	texture->specularscalemod = 1;
 	texture->specularpowermod = 1; 
 	texture->rtlightambient = 0;
@@ -2716,9 +2793,26 @@ nothing                GL_ZERO GL_ONE
 		texture->offsetscale = shader->offsetscale;
 		texture->offsetbias = shader->offsetbias;
 		texture->selfshadowing = shader->selfshadowing;
-		texture->selfshadowingscale = shader->selfshadowingscale;
-		texture->selfshadowingoffsetscale = shader->selfshadowingoffsetscale;
-		texture->selfshadowingoffsetbias = shader->selfshadowingoffsetbias;
+		texture->vegetation = shader->vegetation;
+		if (texture->selfshadowing)
+		{
+			texture->selfshadowingscale = shader->selfshadowingscale;
+			texture->selfshadowingoffsetscale = shader->selfshadowingoffsetscale;
+			texture->selfshadowingoffsetbias = shader->selfshadowingoffsetbias;
+		}
+		if (texture->vegetation)
+		{
+			texture->vegetationheight = shader->vegetationheight;
+			texture->vegetationwaveamplitude = shader->vegetationwaveamplitude;
+			texture->vegetationwavespeed = shader->vegetationwavespeed;
+			texture->vegetationwaverotation = shader->vegetationwaverotation;
+			texture->vegetationmaxamplitude = shader->vegetationmaxamplitude;
+			texture->vegetationmaxspeed = shader->vegetationmaxspeed;
+			texture->vegetationmaxrotation = shader->vegetationmaxrotation;
+		}
+		texture->windamplitudemod = shader->windamplitudemod;
+		texture->windspeedmod = shader->windspeedmod;
+		texture->windtiltmod = shader->windtiltmod;
 		texture->specularscalemod = shader->specularscalemod;
 		texture->specularpowermod = shader->specularpowermod;
 		texture->rtlightambient = shader->rtlightambient;

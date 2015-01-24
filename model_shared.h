@@ -499,6 +499,21 @@ typedef struct q3shaderinfo_s
 	float selfshadowingoffsetscale;
 	float selfshadowingoffsetbias;
 
+	// vegetation
+	qboolean vegetation;
+	float vegetationheight;
+	float vegetationwaveamplitude;
+	float vegetationwavespeed;
+	float vegetationwaverotation;
+	float vegetationmaxamplitude;
+	float vegetationmaxspeed;
+	float vegetationmaxrotation;
+
+	// windmod
+	float windamplitudemod;
+	float windspeedmod;
+	float windtiltmod;
+
 	// polygonoffset (only used if Q3TEXTUREFLAG_POLYGONOFFSET)
 	float biaspolygonoffset, biaspolygonfactor;
 
@@ -653,6 +668,21 @@ typedef struct texture_s
 	float selfshadowingscale;
 	float selfshadowingoffsetscale;
 	float selfshadowingoffsetbias;
+
+	// vegetation
+	qboolean vegetation;
+	float vegetationheight;
+	float vegetationwaveamplitude;
+	float vegetationwavespeed;
+	float vegetationwaverotation;
+	float vegetationmaxamplitude;
+	float vegetationmaxspeed;
+	float vegetationmaxrotation;
+	
+	// windmod
+	float windamplitudemod;
+	float windspeedmod;
+	float windtiltmod;
 
 	// transparent sort category
 	dptransparentsortcategory_t transparentsort;

@@ -92,6 +92,10 @@ cvar_t r_showcollisionbrushes_filter = {0, "r_showcollisionbrushes_filter", "0",
 cvar_t r_showcollisionbrushes_polygonfactor = {0, "r_showcollisionbrushes_polygonfactor", "-1", "expands outward the brush polygons a little bit, used to make collision brushes appear infront of walls"};
 cvar_t r_showcollisionbrushes_polygonoffset = {0, "r_showcollisionbrushes_polygonoffset", "0", "nudges brush polygon depth in hardware depth units, used to make collision brushes appear infront of walls"};
 cvar_t r_showdisabledepthtest = {0, "r_showdisabledepthtest", "0", "disables depth testing on r_show* cvars, allowing you to see what hidden geometry the graphics card is processing"};
+cvar_t r_showvertexalpha = {0, "r_showvertexalpha", "0", "show vertex alpha as orange overlay for debugging purposes. Requires GLSL render path."};
+cvar_t r_showfog = {0, "r_showfog", "0", "show only fog layer for debugging purposes. Requires GLSL render path."};
+cvar_t r_showselfshadowing = {0, "r_showselfshadowing", "0", "show self shadowing texture effect for debugging purposes. Requires GLSL render path."};
+cvar_t r_showdeluxemap = {0, "r_showdeluxemap", "0", "use deluxemap as lightmap for debugging purposes. Requires GLSL render path."};
 cvar_t r_drawportals = {0, "r_drawportals", "0", "shows portals (separating polygons) in world interior in quake1 maps"};
 cvar_t r_drawentities = {0, "r_drawentities","1", "draw entities (doors, players, projectiles, etc)"};
 cvar_t r_draw2d = {0, "r_draw2d","1", "draw 2D stuff (dangerous to turn off)"};
@@ -204,6 +208,18 @@ cvar_t r_sunlight_intensity = {CVAR_SAVE, "r_sunlight_intensity", "1", "Sun ligh
 cvar_t r_sunlight_corona = {CVAR_SAVE, "r_sunlight_corona", "1", "Enables corona effect for sunlight."};
 cvar_t r_sunlight_coronaintensity = {CVAR_SAVE, "r_sunlight_coronaintensity", "1", "Corona intensity for sunlight."};
 cvar_t r_sunlight_coronasize = {CVAR_SAVE, "r_sunlight_coronasize", "1", "Corona size for sunlight."};
+
+cvar_t r_vegetation = {CVAR_SAVE, "r_vegetation", "1", "enable vegetation vertex/fragment shader for specific animation and shading on materials marked with 'dpvegetation' keyword"};
+cvar_t r_vegetation_wave_amplitude = {CVAR_SAVE, "r_vegetation_wave_amplitude", "1.0", "global modifier to wave animation (affects wind as well)"};
+cvar_t r_vegetation_wave_speed = {CVAR_SAVE, "r_vegetation_wave_speed", "1.0", "global modifier to wave animation"};
+cvar_t r_vegetation_wave_rotation = {CVAR_SAVE, "r_vegetation_wave_rotation", "1.0", "global modifier to wave direction rotation speed"};
+cvar_t r_vegetation_deformrotation = {CVAR_SAVE, "r_vegetation_deformrotation", "1", "apply rotation to wave/wind deformation, looks better but uses more complicated vertex shader. Can be turned off for higher FPS on systems with slow GPU."};
+
+cvar_t r_wind = {CVAR_SAVE, "r_wind", "1", "enable wind animation for some materials (such as vegetation)"};
+cvar_t r_wind_vibration_amplitude = {CVAR_SAVE, "r_wind_vibration_amplitude", "0.5", "amplitude of wind vibration effect"};
+cvar_t r_wind_vibration_speed = {CVAR_SAVE, "r_wind_vibration_speed", "1", "speed of wind vibration effect"};
+cvar_t r_wind_direction = {CVAR_SAVE, "r_wind_direction", "1.0 1.0 0", "direction of the wind flow in world space (nothe that vector is not normalized, so larger length yields a larger vibration amplitude)"};
+cvar_t r_wind_tilt = {CVAR_SAVE, "r_wind_tilt", "1.0", "this amount of 'amplitude' will always be applied"};
 
 cvar_t r_water = {CVAR_SAVE, "r_water", "0", "whether to use reflections and refraction on water surfaces (note: r_wateralpha must be set below 1)"};
 cvar_t r_water_clippingplanebias = {CVAR_SAVE, "r_water_clippingplanebias", "1", "a rather technical setting which avoids black pixels around water edges"};
@@ -705,7 +721,8 @@ shaderpermutationinfo_t shaderpermutationinfo[SHADERPERMUTATION_COUNT] =
 	{"#define USEDEPTHRGB\n", " depthrgb"},
 	{"#define USEALPHAGENVERTEX\n", " alphagenvertex"},
 	{"#define USESKELETAL\n", " skeletal"},
-	{"#define USESELFSHADOWING\n", " selfshadowing"}
+	{"#define USESELFSHADOWING\n", " selfshadowing"},
+	{"#define USEVEGETATION\n", " vegetation"},
 };
 
 // NOTE: MUST MATCH ORDER OF SHADERMODE_* ENUMS!
@@ -898,6 +915,9 @@ typedef struct r_glsl_permutation_s
 	int loc_BounceGridIntensity;
 	int loc_SunDir; // vortex: Blood Omnicide sunlight
 	int loc_SunColor;
+	int loc_VegetationParameters; // vortex: Blood Omnicide vegetation shader
+	int loc_WindDir;
+	int loc_WindParameters;
 	/// uniform block bindings
 	int ubibind_Skeletal_Transform12_UniformBlock;
 	/// uniform block indices
@@ -930,10 +950,16 @@ enum
 	SHADERSTATICPARM_SUNLIGHT = 15, // sunlight
 	SHADERSTATICPARM_BOUNCEGRIDDIRECTIONAL = 16, // use 16-component pixels in bouncegrid texture for directional lighting rather than standard 4-component
 	SHADERSTATICPARM_POSTPROCESSING = 17, ///< user defined postprocessing (postprocessing only)
-	SHADERSTATICPARM_SATURATION = 18 ///< saturation (postprocessing only)
+	SHADERSTATICPARM_SATURATION = 18, ///< saturation (postprocessing only)
+	SHADERSTATICPARM_WIND = 19, ///< wind (enables wind deformation for vegetatino and vice versa)
+	SHADERSTATICPARM_VEGETATIONDEFORMROTATION = 20, ///< vegetationdeformrotation (enables rotation for vegetation deforms (better quality)
+	SHADERSTATICPARM_SHOWVERTEXALPHA = 21, ///< showvertexalpha (show vertex alpha as orange overlay for debugging purposes)
+	SHADERSTATICPARM_SHOWFOG = 22, ///< showfog (show only fog layer for debugging purposes)
+	SHADERSTATICPARM_SHOWSELFSHADOWING = 23, ///< showselfshadowing (show only self shadowing for debugging purposes)
+	SHADERSTATICPARM_SHOWDELUXEMAP = 24 ///< showdeluxemap (use deluxemap as lightmap for debugging purposes)
 };
 
-#define SHADERSTATICPARMS_COUNT 18
+#define SHADERSTATICPARMS_COUNT 25
 
 static const char *shaderstaticparmstrings_list[SHADERSTATICPARMS_COUNT];
 static int shaderstaticparms_count = 0;
@@ -986,10 +1012,22 @@ qboolean R_CompileShader_CheckStaticParms(void)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_CELTEXTURING);
 	if (r_sunlight.integer)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_SUNLIGHT);
+	if (r_wind.integer)
+		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_WIND);
+	if (r_vegetation_deformrotation.integer)
+		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_VEGETATIONDEFORMROTATION);
 	if (r_shadow_bouncegridtexture && cl.csqc_vidvars.drawworld && r_shadow_bouncegriddirectional)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_BOUNCEGRIDDIRECTIONAL);
 	if (!R_Stereo_ColorMasking() && r_glsl_saturation.value != 1)
 		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_SATURATION);
+	if (r_showvertexalpha.integer)
+		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_SHOWVERTEXALPHA);
+	if (r_showfog.integer)
+		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_SHOWFOG);
+	if (r_showselfshadowing.integer)
+		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_SHOWSELFSHADOWING);
+	if (r_showdeluxemap.integer)
+		R_COMPILESHADER_STATICPARM_ENABLE(SHADERSTATICPARM_SHOWDELUXEMAP);
 	return memcmp(r_compileshader_staticparms, r_compileshader_staticparms_save, sizeof(r_compileshader_staticparms)) != 0;
 }
 
@@ -1022,6 +1060,12 @@ static void R_CompileShader_AddStaticParms(unsigned int mode, unsigned int permu
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_BOUNCEGRIDDIRECTIONAL, "USEBOUNCEGRIDDIRECTIONAL");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_POSTPROCESSING, "USEPOSTPROCESSING");
 	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_SATURATION, "USESATURATION");
+	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_WIND, "USEWIND");
+	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_VEGETATIONDEFORMROTATION, "USEVEGETATIONDEFORMROTATION");
+	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_SHOWVERTEXALPHA, "SHOWVERTEXALPHA");
+	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_SHOWFOG, "SHOWFOG");
+	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_SHOWSELFSHADOWING, "SHOWSELFSHADOWING");
+	R_COMPILESHADER_STATICPARM_EMIT(SHADERSTATICPARM_SHOWDELUXEMAP, "SHOWDELUXEMAP");
 }
 
 /// information about each possible shader permutation
@@ -1341,6 +1385,10 @@ static void R_GLSL_CompilePermutation(r_glsl_permutation_t *p, unsigned int mode
 		// vortex: Blood Omnicide sunlight
 		p->loc_SunDir                     = qglGetUniformLocation(p->program, "SunlightDir");
 		p->loc_SunColor                   = qglGetUniformLocation(p->program, "SunlightColor");
+		// vortex: Blood Omnicide vegetation shader
+		p->loc_VegetationParameters       = qglGetUniformLocation(p->program, "VegetationParameters");
+		p->loc_WindDir                    = qglGetUniformLocation(p->program, "WindDir");
+		p->loc_WindParameters             = qglGetUniformLocation(p->program, "WindParameters");
 		// initialize the samplers to refer to the texture units we use
 		p->tex_Texture_First = -1;
 		p->tex_Texture_Second = -1;
@@ -1473,6 +1521,7 @@ static void R_SetupShader_SetPermutationGLSL(unsigned int mode, unsigned int per
 	if (r_glsl_permutation->loc_ModelViewProjectionMatrix >= 0) qglUniformMatrix4fv(r_glsl_permutation->loc_ModelViewProjectionMatrix, 1, false, gl_modelviewprojection16f);
 	if (r_glsl_permutation->loc_ModelViewMatrix >= 0) qglUniformMatrix4fv(r_glsl_permutation->loc_ModelViewMatrix, 1, false, gl_modelview16f);
 	if (r_glsl_permutation->loc_ClientTime >= 0) qglUniform1f(r_glsl_permutation->loc_ClientTime, cl.time);
+
 	CHECKGLERROR
 }
 
@@ -2158,7 +2207,6 @@ void R_SetupShader_DepthOrShadow(qboolean notrippy, qboolean depthrgb, qboolean 
 		permutation |= SHADERPERMUTATION_DEPTHRGB;
 	if (skeletal)
 		permutation |= SHADERPERMUTATION_SKELETAL;
-
 	if (vid.allowalphatocoverage)
 		GL_AlphaToCoverage(false);
 	switch (vid.renderpath)
@@ -2285,7 +2333,9 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 	if (rsurface.texture->currentmaterialflags & MATERIALFLAG_ALPHATEST)
 		permutation |= SHADERPERMUTATION_ALPHAKILL;
 	if (rsurface.texture->scrollblend[0] && rsurface.texture->scrollblend[1])
-		permutation |= SHADERPERMUTATION_SCROLLBLEND; // todo: make generic
+		permutation |= SHADERPERMUTATION_SCROLLBLEND;
+	if (rsurface.texture->vegetation && r_vegetation.integer)
+		permutation |= SHADERPERMUTATION_VEGETATION;
 	if (rsurfacepass == RSURFPASS_BACKGROUND)
 	{
 		// distorted background
@@ -3034,6 +3084,16 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			if (r_glsl_permutation->loc_SunDir >= 0) { qglUniform4f(r_glsl_permutation->loc_SunDir, rsurface.sundir[0], rsurface.sundir[1], rsurface.sundir[2], 0.0); }
 			if (r_glsl_permutation->loc_SunColor >= 0) qglUniform4f(r_glsl_permutation->loc_SunColor, r_refdef.scene.suncolor[0], r_refdef.scene.suncolor[1], r_refdef.scene.suncolor[2], r_refdef.scene.sunintensity);
 		}
+		
+		if (r_glsl_permutation->loc_VegetationParameters >= 0) 
+		{ 
+			float waveamplitude = rsurface.texture->vegetationwaveamplitude * r_vegetation_wave_amplitude.value;
+			float wavespeed = rsurface.texture->vegetationwavespeed * r_vegetation_wave_speed.value;
+			float waverotation = rsurface.texture->vegetationwaverotation * r_vegetation_wave_rotation.value;
+			qglUniform4f(r_glsl_permutation->loc_VegetationParameters, rsurface.texture->vegetationheight, min(waveamplitude, rsurface.texture->vegetationmaxamplitude), min(waverotation, rsurface.texture->vegetationmaxspeed), min(wavespeed, rsurface.texture->vegetationmaxrotation) ); 
+		}
+		if (r_glsl_permutation->loc_WindDir >= 0) { qglUniform3f(r_glsl_permutation->loc_WindDir, r_wind_direction.vector[0], r_wind_direction.vector[1], r_wind_direction.vector[2]); }
+		if (r_glsl_permutation->loc_WindParameters >= 0) { qglUniform4f(r_glsl_permutation->loc_WindParameters, r_wind_vibration_amplitude.value * rsurface.texture->windamplitudemod, r_wind_tilt.value * rsurface.texture->windtiltmod, r_wind_vibration_speed.value * rsurface.texture->windspeedmod, 0.0); }
 		CHECKGLERROR
 		break;
 	case RENDERPATH_GL11:
@@ -4451,6 +4511,10 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_showcollisionbrushes_polygonfactor);
 	Cvar_RegisterVariable(&r_showcollisionbrushes_polygonoffset);
 	Cvar_RegisterVariable(&r_showdisabledepthtest);
+	Cvar_RegisterVariable(&r_showvertexalpha);
+	Cvar_RegisterVariable(&r_showfog);
+	Cvar_RegisterVariable(&r_showselfshadowing);
+	Cvar_RegisterVariable(&r_showdeluxemap);
 	Cvar_RegisterVariable(&r_drawportals);
 	Cvar_RegisterVariable(&r_drawentities);
 	Cvar_RegisterVariable(&r_draw2d);
@@ -4540,6 +4604,16 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_sunlight_dir);
 	Cvar_RegisterVariable(&r_sunlight_color);
 	Cvar_RegisterVariable(&r_sunlight_intensity);
+	Cvar_RegisterVariable(&r_vegetation);
+	Cvar_RegisterVariable(&r_vegetation_wave_amplitude);
+	Cvar_RegisterVariable(&r_vegetation_wave_speed);
+	Cvar_RegisterVariable(&r_vegetation_wave_rotation);
+	Cvar_RegisterVariable(&r_vegetation_deformrotation);
+	Cvar_RegisterVariable(&r_wind);
+	Cvar_RegisterVariable(&r_wind_vibration_amplitude);
+	Cvar_RegisterVariable(&r_wind_vibration_speed);
+	Cvar_RegisterVariable(&r_wind_direction);
+	Cvar_RegisterVariable(&r_wind_tilt);
 	Cvar_RegisterVariable(&r_celshading);
 	Cvar_RegisterVariable(&r_celoutlines);
 	Cvar_RegisterVariable(&r_celtexturing);
@@ -6098,20 +6172,18 @@ static void R_Water_StartFrame(void)
 	r_fb.water.numwaterplanes = 0;
 }
 
-void R_Water_AddWaterPlane(msurface_t *surface, int entno)
+void RSurf_PlaneForSurface(msurface_t *surface, mplane_t *plane, vec3_t outmins, vec3_t outmaxs, vec3_t outcenter)
 {
-	int planeindex, bestplaneindex, vertexindex, distscore;
 	vec3_t mins, maxs, normal, center, v, n;
-	vec_t planescore, bestplanescore;
-	mplane_t plane;
-	r_waterstate_waterplane_t *p;
-	texture_t *t = R_GetCurrentTexture(surface->texture);
+	int vertexindex;
 
-	rsurface.texture = t;
 	RSurf_PrepareVerticesForBatch(BATCHNEED_ARRAY_VERTEX | BATCHNEED_ARRAY_NORMAL | BATCHNEED_NOGAPS, 1, ((const msurface_t **)&surface));
-	// if the model has no normals, it's probably off-screen and they were not generated, so don't add it anyway
+	// if the model has no normals, it's probably off-screen and they were not generated, so can't calc plane for it
 	if (!rsurface.batchnormal3f || rsurface.batchnumvertices < 1)
+	{
+		memset(plane, 0, sizeof(mplane_t));
 		return;
+	}
 	// average the vertex normals, find the surface bounds (after deformvertexes)
 	Matrix4x4_Transform(&rsurface.matrix, rsurface.batchvertex3f, v);
 	Matrix4x4_Transform3x3(&rsurface.matrix, rsurface.batchnormal3f, n);
@@ -6133,22 +6205,46 @@ void R_Water_AddWaterPlane(msurface_t *surface, int entno)
 	VectorNormalize(normal);
 	VectorMAM(0.5f, mins, 0.5f, maxs, center);
 
-	VectorCopy(normal, plane.normal);
-	VectorNormalize(plane.normal);
-	plane.dist = DotProduct(center, plane.normal);
-	PlaneClassify(&plane);
-	if (PlaneDiff(r_refdef.view.origin, &plane) < 0)
+	VectorCopy(normal, plane->normal);
+	VectorNormalize(plane->normal);
+	plane->dist = DotProduct(center, plane->normal);
+	PlaneClassify(plane);
+	if (PlaneDiff(r_refdef.view.origin, plane) < 0)
 	{
 		// skip backfaces (except if nocullface is set)
 //		if (!(t->currentmaterialflags & MATERIALFLAG_NOCULLFACE))
 //			return;
-		VectorNegate(plane.normal, plane.normal);
-		plane.dist *= -1;
-		PlaneClassify(&plane);
+		VectorNegate(plane->normal, plane->normal);
+		plane->dist *= -1;
+		PlaneClassify(plane);
 	}
 
+	// copy additional out stuff
+	if (outmins != NULL)
+		VectorCopy( mins, outmins );
+	if (outmaxs != NULL)
+		VectorCopy( maxs, outmaxs );
+	if (outcenter != NULL)
+		VectorCopy( center, outcenter );
+}
 
-	// find a matching plane if there is one
+void R_Water_AddWaterPlane(msurface_t *surface, int entno)
+{
+	int planeindex, bestplaneindex, distscore;
+	vec3_t mins, maxs, center;
+	vec_t planescore, bestplanescore;
+	mplane_t plane;
+	r_waterstate_waterplane_t *p;
+
+	texture_t *t = R_GetCurrentTexture(surface->texture);
+	rsurface.texture = t;
+
+	// find plane for surface, store it
+	RSurf_PlaneForSurface(surface, &plane, mins, maxs, center);
+	VectorCopy(plane.normal, surface->planenormal);
+	surface->planedist = plane.dist;
+
+	// find a matching waterplane if there is one
 	bestplaneindex = -1;
 	bestplanescore = 1048576.0f;
 	for (planeindex = 0, p = r_fb.water.waterplanes;planeindex < r_fb.water.numwaterplanes;planeindex++, p++)
@@ -6157,7 +6253,7 @@ void R_Water_AddWaterPlane(msurface_t *surface, int entno)
 		{
 			distscore = fabs(plane.dist - p->plane.dist);
 			planescore = 1.0f - DotProduct(plane.normal, p->plane.normal);
-			planescore = planescore + distscore * 0.001f;
+			planescore = planescore + distscore * 0.01f;
 			if (bestplaneindex < 0 || bestplanescore > planescore)
 			{
 				bestplaneindex = planeindex;
@@ -10580,8 +10676,32 @@ void RSurf_DrawBatch(void)
 
 static int RSurf_FindWaterPlaneForSurface(const msurface_t *surface)
 {
+	int planeindex, bestplaneindex = -1;
+#if 0
+	// vortex: precise way (match R_Water_AddWaterPlanes)
+	int distscore;
+	vec_t planescore, bestplanescore;
+	r_waterstate_waterplane_t *p;
+	// find a matching waterplane if there is one
+	bestplaneindex = -1;
+	bestplanescore = 1048576.0f;
+	for (planeindex = 0, p = r_fb.water.waterplanes;planeindex < r_fb.water.numwaterplanes;planeindex++, p++)
+	{
+		if(p->camera_entity == rsurface.texture->camera_entity)
+		{
+			distscore = fabs(surface->planedist - p->plane.dist);
+			planescore = 1.0f - DotProduct(surface->planenormal, p->plane.normal);
+			planescore = planescore + distscore * 0.01f;
+			if (bestplaneindex < 0 || bestplanescore > planescore)
+			{
+				bestplaneindex = planeindex;
+				bestplanescore = planescore;
+			}
+		}
+	}
+#else
 	// pick the closest matching water plane
-	int planeindex, vertexindex, bestplaneindex = -1;
+	int vertexindex;
 	float d, bestd = 1048576.0f;
 	vec3_t vert;
 	const float *v;
@@ -10612,6 +10732,7 @@ static int RSurf_FindWaterPlaneForSurface(const msurface_t *surface)
 			bestplaneindex = planeindex;
 		}
 	}
+#endif
 	return bestplaneindex;
 	// NOTE: this MAY return a totally unrelated water plane; we can ignore
 	// this situation though, as it might be better to render single larger
@@ -11666,6 +11787,8 @@ static void R_DrawTextureSurfaceList_DepthOnly(int texturenumsurfaces, const msu
 	if ((rsurface.texture->currentmaterialflags & (MATERIALFLAG_NODEPTHTEST | MATERIALFLAG_BLENDED | MATERIALFLAG_ALPHATEST)))
 		return;
 	if (r_fb.water.renderingscene && (rsurface.texture->currentmaterialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFLECTION)))
+		return;
+	if (rsurface.texture->vegetation && r_vegetation.integer)
 		return;
 	RSurf_SetupDepthAndCulling();
 	RSurf_PrepareVerticesForBatch(BATCHNEED_ARRAY_VERTEX | BATCHNEED_ALLOWMULTIDRAW, texturenumsurfaces, texturesurfacelist);
@@ -13033,6 +13156,10 @@ void R_DrawCustomSurface(skinframe_t *skinframe, const matrix4x4_t *texmatrix, i
 	texture.selfshadowing = false;
 	texture.selfshadowingscale = 1;
 	texture.selfshadowingoffsetscale = 1;
+	texture.vegetation = false;
+	texture.windamplitudemod = 1;
+	texture.windspeedmod = 1;
+	texture.windtiltmod = 1;
 	texture.specularscalemod = 1;
 	texture.specularpowermod = 1;
 	texture.transparentsort = TRANSPARENTSORT_DISTANCE;

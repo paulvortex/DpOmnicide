@@ -1709,6 +1709,10 @@ static void Mod_Q1BSP_LoadTextures(sizebuf_t *sb)
 		tx->selfshadowingscale = 1;
 		tx->selfshadowingoffsetscale = 1;
 		tx->selfshadowingoffsetbias = 0;
+		tx->vegetation = false;
+		tx->windamplitudemod = 1;
+		tx->windspeedmod = 1;
+		tx->windtiltmod = 1;
 		tx->specularscalemod = 1;
 		tx->specularpowermod = 1;
 		tx->transparentsort = TRANSPARENTSORT_DISTANCE;

@@ -68,6 +68,10 @@ static void Mod_SpriteSetupTexture(texture_t *texture, skinframe_t *skinframe, q
 	texture->selfshadowingscale = 1;
 	texture->selfshadowingoffsetscale = 1;
 	texture->selfshadowingoffsetbias = 0;
+	texture->vegetation = false;
+	texture->windamplitudemod = 1;
+	texture->windspeedmod = 1;
+	texture->windtiltmod = 1;
 	texture->specularscalemod = 1;
 	texture->specularpowermod = 1;
 	texture->basematerialflags = MATERIALFLAG_WALL;

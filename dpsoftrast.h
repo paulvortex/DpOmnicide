@@ -200,7 +200,8 @@ typedef enum shaderpermutation_e
 	SHADERPERMUTATION_ALPHAGEN_VERTEX = 1<<26, ///< alphaGen vertex
 	SHADERPERMUTATION_SKELETAL = 1<<27, ///< (skeletal models) use skeletal matrices to deform vertices (gpu-skinning)
 	SHADERPERMUTATION_SELFSHADOWING = 1<<28, ///< apply self shadowing during lighting using heightmap and displacement mapping
-	SHADERPERMUTATION_COUNT = 29 ///< size of shaderpermutationinfo array
+	SHADERPERMUTATION_VEGETATION = 1<<29, ///< apply vegetation procedural animation and shading
+	SHADERPERMUTATION_COUNT = 30 ///< size of shaderpermutationinfo array
 }
 shaderpermutation_t;
 
