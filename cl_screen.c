@@ -1019,7 +1019,7 @@ static void R_TimeReport_EndFrame(void)
 "%3i renders org:'%+8.2f %+8.2f %+8.2f' dir:'%+2.3f %+2.3f %+2.3f'\n"
 "%5i viewleaf%5i cluster%3i area%4i brushes%4i surfaces(%7i triangles)\n"
 "%7i surfaces%7i triangles %5i entities (%7i surfaces%7i triangles)\n"
-"%5i leafs%5i portals%6i/%6i particles%6i/%6i decals %3i%% quality\n"
+"%5i leafs%5i portals%6i/%6iparticles%6i/%6i decals %3i%% quality\n"
 "%7i lightmap updates (%7i pixels)%8i/%8i framedata\n"
 "%4i lights%4i clears%4i scissored%7i light%7i shadow%7i dynamic\n"
 "bouncegrid:%4i lights%6i particles%6i traces%6i hits%6i splats%6i bounces\n"
