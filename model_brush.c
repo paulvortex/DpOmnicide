@@ -5051,7 +5051,7 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 			FS_StripExtension(loadmodel->name, mapname, sizeof(mapname));
 			
 			// load first lightmap
-			sf = R_SkinFrame_LoadExternal(va(vabuf, sizeof(vabuf), "%s%s/lm_%04d", mod_q3bsp_lightmapskinframes_path.value, mapname, 0), TEXF_CLAMP | TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), true, false);
+			sf = R_SkinFrame_LoadExternal(va(vabuf, sizeof(vabuf), "%s%s/lm_%04d", mod_q3bsp_lightmapskinframes_path.string, mapname, 0), TEXF_CLAMP | TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), true, false);
 			inpixels[0] = NULL;
 			if(!sf)
 				return;
@@ -5068,7 +5068,7 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 			// load rest lightmaps
 			for(count = 1; ; ++count)
 			{
-				sf = R_SkinFrame_LoadExternal(va(vabuf, sizeof(vabuf), "%s/lm_%04d", mapname, count), TEXF_CLAMP | TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), true, false);
+				sf = R_SkinFrame_LoadExternal(va(vabuf, sizeof(vabuf), "%s%s/lm_%04d", mod_q3bsp_lightmapskinframes_path.string, mapname, count), TEXF_CLAMP | TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), true, false);
 				inpixels[count] = NULL;
 				if(!sf)
 					break; // we got all of them
@@ -5076,7 +5076,7 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 				image_width = R_TextureWidth(skinframes[count]->base);
 				image_height = R_TextureHeight(skinframes[count]->base);
 				if(image_width != size || image_height != size)
-					Con_Printf("Mod_Q3BSP_LoadLightmaps: mismatched lightmap size in %s - external lightmap %s/lm_%04d does not match earlier ones\n", loadmodel->name, mapname, count);
+					Con_Printf("Mod_Q3BSP_LoadLightmaps: mismatched lightmap size in %s - external lightmap %s%s/lm_%04d does not match earlier ones\n", loadmodel->name, mod_q3bsp_lightmapskinframes_path.value, mapname, count);
 			}
 			Con_Printf("Found %i external lightmaps\n", count);
 		}
