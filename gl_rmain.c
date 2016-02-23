@@ -588,6 +588,21 @@ static void R_BuildFogTexture(void)
 	}
 }
 
+static void R_ClearFogHeightTexture(void)
+{
+	r_refdef.fogheighttexturename[0] = 0;
+	r_refdef.fog_height_tablesize = 0;
+	if (r_texture_fogheighttexture)
+		R_FreeTexture(r_texture_fogheighttexture);
+	r_texture_fogheighttexture = NULL;
+	if (r_refdef.fog_height_table2d)
+		Mem_Free(r_refdef.fog_height_table2d);
+	r_refdef.fog_height_table2d = NULL;
+	if (r_refdef.fog_height_table1d)
+		Mem_Free(r_refdef.fog_height_table1d);
+	r_refdef.fog_height_table1d = NULL;
+}
+
 static void R_BuildFogHeightTexture(void)
 {
 	unsigned char *inpixels;
@@ -603,16 +618,7 @@ static void R_BuildFogHeightTexture(void)
 		inpixels = loadimagepixelsbgra(r_refdef.fogheighttexturename, true, false, false, NULL, NULL);
 	if (!inpixels)
 	{
-		r_refdef.fog_height_tablesize = 0;
-		if (r_texture_fogheighttexture)
-			R_FreeTexture(r_texture_fogheighttexture);
-		r_texture_fogheighttexture = NULL;
-		if (r_refdef.fog_height_table2d)
-			Mem_Free(r_refdef.fog_height_table2d);
-		r_refdef.fog_height_table2d = NULL;
-		if (r_refdef.fog_height_table1d)
-			Mem_Free(r_refdef.fog_height_table1d);
-		r_refdef.fog_height_table1d = NULL;
+		R_ClearFogHeightTexture();
 		return;
 	}
 	size = image_width;
@@ -2108,7 +2114,7 @@ static void R_GLSL_DumpShader_f(void)
 	}
 }
 
-void R_SetupShader_Generic(rtexture_t *first, rtexture_t *second, int texturemode, int rgbscale, qboolean usegamma, qboolean notrippy, qboolean suppresstexalpha)
+void R_SetupShader_Generic(rtexture_t *first, rtexture_t *second, int texturemode, int rgbscale, qboolean usegamma, qboolean notrippy, qboolean suppresstexalpha, qboolean usefog)
 {
 	unsigned int permutation = 0;
 	if (r_trippy.integer && !notrippy)
@@ -2126,6 +2132,8 @@ void R_SetupShader_Generic(rtexture_t *first, rtexture_t *second, int texturemod
 		permutation |= SHADERPERMUTATION_VERTEXTEXTUREBLEND;
 	if (suppresstexalpha)
 		permutation |= SHADERPERMUTATION_REFLECTCUBE;
+	if (usefog && r_refdef.fogenabled)
+		permutation |= r_texture_fogheighttexture ? SHADERPERMUTATION_FOGHEIGHTTEXTURE : (r_refdef.fogplaneviewabove ? SHADERPERMUTATION_FOGOUTSIDE : SHADERPERMUTATION_FOGINSIDE);
 	if (!second)
 		texturemode = GL_MODULATE;
 	if (usegamma && v_glslgamma.integer && r_texture_gammaramps && !vid_gammatables_trivial)
@@ -2167,6 +2175,18 @@ void R_SetupShader_Generic(rtexture_t *first, rtexture_t *second, int texturemod
 			R_Mesh_TexBind(r_glsl_permutation->tex_Texture_Second, second);
 		if (r_glsl_permutation->tex_Texture_GammaRamps >= 0)
 			R_Mesh_TexBind(r_glsl_permutation->tex_Texture_GammaRamps, r_texture_gammaramps);
+		if (usefog && r_refdef.fogenabled)
+		{
+			if (r_glsl_permutation->tex_Texture_FogHeightTexture >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_FogHeightTexture, r_texture_fogheighttexture);
+			if (r_glsl_permutation->tex_Texture_FogMask >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_FogMask, r_texture_fogattenuation);
+			if (r_glsl_permutation->loc_FogColor >= 0)
+				qglUniform3f(r_glsl_permutation->loc_FogColor, r_refdef.fogcolor[0], r_refdef.fogcolor[1], r_refdef.fogcolor[2]);
+			if (r_glsl_permutation->loc_EyePosition >= 0) qglUniform3f(r_glsl_permutation->loc_EyePosition, rsurface.localvieworigin[0], rsurface.localvieworigin[1], rsurface.localvieworigin[2]);
+			if (r_glsl_permutation->loc_FogPlane >= 0) qglUniform4f(r_glsl_permutation->loc_FogPlane, rsurface.fogplane[0], rsurface.fogplane[1], rsurface.fogplane[2], rsurface.fogplane[3]);
+			if (r_glsl_permutation->loc_FogPlaneViewDist >= 0) qglUniform1f(r_glsl_permutation->loc_FogPlaneViewDist, rsurface.fogplaneviewdist);
+			if (r_glsl_permutation->loc_FogRangeRecip >= 0) qglUniform1f(r_glsl_permutation->loc_FogRangeRecip, rsurface.fograngerecip);
+			if (r_glsl_permutation->loc_FogHeightFade >= 0) qglUniform1f(r_glsl_permutation->loc_FogHeightFade, rsurface.fogheightfade);
+		}
 		break;
 	case RENDERPATH_GL13:
 	case RENDERPATH_GLES1:
@@ -2195,7 +2215,7 @@ void R_SetupShader_Generic(rtexture_t *first, rtexture_t *second, int texturemod
 
 void R_SetupShader_Generic_NoTexture(qboolean usegamma, qboolean notrippy)
 {
-	R_SetupShader_Generic(NULL, NULL, GL_MODULATE, 1, usegamma, notrippy, false);
+	R_SetupShader_Generic(NULL, NULL, GL_MODULATE, 1, usegamma, notrippy, false, false);
 }
 
 void R_SetupShader_DepthOrShadow(qboolean notrippy, qboolean depthrgb, qboolean skeletal)
@@ -2264,12 +2284,12 @@ extern rtexture_t *r_shadow_prepassgeometrynormalmaptexture;
 extern rtexture_t *r_shadow_prepasslightingdiffusetexture;
 extern rtexture_t *r_shadow_prepasslightingspeculartexture;
 
-#define BLENDFUNC_ALLOWS_COLORMOD      1
-#define BLENDFUNC_ALLOWS_FOG           2
-#define BLENDFUNC_ALLOWS_FOG_HACK0     4
-#define BLENDFUNC_ALLOWS_FOG_HACKALPHA 8
-#define BLENDFUNC_FORBID_CELTEXTURING  16
-#define BLENDFUNC_ALLOWS_ANYFOG        (BLENDFUNC_ALLOWS_FOG | BLENDFUNC_ALLOWS_FOG_HACK0 | BLENDFUNC_ALLOWS_FOG_HACKALPHA)
+#define BLENDFUNC_ALLOWS_COLORMOD        1
+#define BLENDFUNC_ALLOWS_FOG             2
+#define BLENDFUNC_ALLOWS_FOG_HACK0       4
+#define BLENDFUNC_ALLOWS_FOG_HACKALPHA   8
+#define BLENDFUNC_FORBID_CELTEXTURING    16 
+#define BLENDFUNC_ALLOWS_ANYFOG         (BLENDFUNC_ALLOWS_FOG | BLENDFUNC_ALLOWS_FOG_HACK0 | BLENDFUNC_ALLOWS_FOG_HACKALPHA)
 static int R_BlendFuncFlags(int src, int dst)
 {
 	int r = 0;
@@ -4413,6 +4433,7 @@ static void gl_main_shutdown(void)
 	r_texture_gammaramps = NULL;
 	r_texture_numcubemaps = 0;
 	//r_texture_fogintensity = NULL;
+	R_ClearFogHeightTexture();
 	memset(&r_fb, 0, sizeof(r_fb));
 	R_GLSL_Restart_f();
 
@@ -4629,7 +4650,7 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_water_skipblackplanes);
 	Cvar_RegisterVariable(&r_water_hideplayer);
 	Cvar_RegisterVariable(&r_water_fbo);
-
+	
 	Cvar_RegisterVariable(&r_lerpsprites);
 	Cvar_RegisterVariable(&r_lerpmodels);
 	Cvar_RegisterVariable(&r_lerplightstyles);
@@ -6241,8 +6262,8 @@ void R_Water_AddWaterPlane(msurface_t *surface, int entno)
 
 	// find plane for surface, store it
 	RSurf_PlaneForSurface(surface, &plane, mins, maxs, center);
-	VectorCopy(plane.normal, surface->planenormal);
-	surface->planedist = plane.dist;
+	//VectorCopy(plane.normal, surface->planenormal);
+	//surface->planedist = plane.dist;
 
 	// find a matching waterplane if there is one
 	bestplaneindex = -1;
@@ -6317,7 +6338,6 @@ static void R_Water_ProcessPlanes(int fbo, rtexture_t *depthtexture, rtexture_t 
 	vec3_t visorigin;
 	qboolean usewaterfbo = (r_viewfbo.integer >= 1 || r_water_fbo.integer >= 1) && vid.support.ext_framebuffer_object && vid.support.arb_texture_non_power_of_two && vid.samples < 2;
 	char vabuf[1024];
-
 	originalview = r_refdef.view;
 
 	// lowquality hack, temporarily shut down some cvars and restore afterwards
@@ -6871,7 +6891,7 @@ static void R_Bloom_MakeTexture(void)
 		break;
 	}
 	// TODO: do boxfilter scale-down in shader?
-	R_SetupShader_Generic(r_fb.colortexture, NULL, GL_MODULATE, 1, false, true, true);
+	R_SetupShader_Generic(r_fb.colortexture, NULL, GL_MODULATE, 1, false, true, true, false);
 	R_Mesh_Draw(0, 4, 0, 2, polygonelement3i, NULL, 0, polygonelement3s, NULL, 0);
 	r_refdef.stats[r_stat_bloom_drawpixels] += r_fb.bloomwidth * r_fb.bloomheight;
 
@@ -6904,7 +6924,7 @@ static void R_Bloom_MakeTexture(void)
 			GL_Color(1,1,1,1); // no fix factor supported here
 		}
 		R_Mesh_PrepareVertices_Generic_Arrays(4, r_screenvertex3f, NULL, r_fb.bloomtexcoord2f);
-		R_SetupShader_Generic(intex, NULL, GL_MODULATE, 1, false, true, false);
+		R_SetupShader_Generic(intex, NULL, GL_MODULATE, 1, false, true, false, false);
 		R_Mesh_Draw(0, 4, 0, 2, polygonelement3i, NULL, 0, polygonelement3s, NULL, 0);
 		r_refdef.stats[r_stat_bloom_drawpixels] += r_fb.bloomwidth * r_fb.bloomheight;
 
@@ -6931,7 +6951,7 @@ static void R_Bloom_MakeTexture(void)
 		// TODO: do offset blends using GLSL
 		// TODO instead of changing the texcoords, change the target positions to prevent artifacts at edges
 		GL_BlendFunc(GL_ONE, GL_ZERO);
-		R_SetupShader_Generic(intex, NULL, GL_MODULATE, 1, false, true, false);
+		R_SetupShader_Generic(intex, NULL, GL_MODULATE, 1, false, true, false, false);
 		for (x = -range;x <= range;x++)
 		{
 			if (!dir){xoffset = 0;yoffset = x;}
@@ -7060,7 +7080,7 @@ static void R_BlendView(int fbo, rtexture_t *depthtexture, rtexture_t *colortext
 						R_Mesh_PrepareVertices_Generic_Arrays(4, r_d3dscreenvertex3f, NULL, r_fb.screentexcoord2f);
 						break;
 					}
-					R_SetupShader_Generic(r_fb.ghosttexture, NULL, GL_MODULATE, 1, false, true, true);
+					R_SetupShader_Generic(r_fb.ghosttexture, NULL, GL_MODULATE, 1, false, true, true, false);
 					R_Mesh_Draw(0, 4, 0, 2, polygonelement3i, NULL, 0, polygonelement3s, NULL, 0);
 					r_refdef.stats[r_stat_bloom_drawpixels] += r_refdef.view.viewport.width * r_refdef.view.viewport.height;
 				}
@@ -12049,11 +12069,14 @@ static void R_DecalSystem_SpawnTriangle(decalsystem_t *decalsystem, const float 
 		qboolean useshortelements;
 		decalsystem->maxdecals = max(16, decalsystem->maxdecals * 2);
 		useshortelements = decalsystem->maxdecals * 3 <= 65536;
-		decalsystem->decals = (tridecal_t *)Mem_Alloc(cls.levelmempool, decalsystem->maxdecals * (sizeof(tridecal_t) + sizeof(float[3][3]) + sizeof(float[3][2]) + sizeof(float[3][4]) + sizeof(int[3]) + (useshortelements ? sizeof(unsigned short[3]) : 0)));
-		decalsystem->color4f = (float *)(decalsystem->decals + decalsystem->maxdecals);
-		decalsystem->texcoord2f = (float *)(decalsystem->color4f + decalsystem->maxdecals*12);
-		decalsystem->vertex3f = (float *)(decalsystem->texcoord2f + decalsystem->maxdecals*6);
-		decalsystem->element3i = (int *)(decalsystem->vertex3f + decalsystem->maxdecals*9);
+		decalsystem->decals = (tridecal_t *)Mem_Alloc(cls.levelmempool, decalsystem->maxdecals * (sizeof(tridecal_t) + (sizeof(float[3][3]) + sizeof(float[3][2]) + sizeof(float[3][4])) * 2 + sizeof(int[3]) + (useshortelements ? sizeof(unsigned short[3]) : 0)));
+		decalsystem->mesh[0].color4f = (float *)(decalsystem->decals + decalsystem->maxdecals);
+		decalsystem->mesh[0].texcoord2f = (float *)(decalsystem->mesh[0].color4f + decalsystem->maxdecals*12);
+		decalsystem->mesh[0].vertex3f = (float *)(decalsystem->mesh[0].texcoord2f + decalsystem->maxdecals*6);
+		decalsystem->mesh[1].color4f = (float *)(decalsystem->mesh[0].vertex3f + decalsystem->maxdecals*9);
+		decalsystem->mesh[1].texcoord2f = (float *)(decalsystem->mesh[1].color4f + decalsystem->maxdecals*12);
+		decalsystem->mesh[1].vertex3f = (float *)(decalsystem->mesh[1].texcoord2f + decalsystem->maxdecals*6);
+		decalsystem->element3i = (int *)(decalsystem->mesh[1].vertex3f + decalsystem->maxdecals*9);
 		decalsystem->element3s = (useshortelements ? ((unsigned short *)(decalsystem->element3i + decalsystem->maxdecals*3)) : NULL);
 		if (decalsystem->numdecals)
 			memcpy(decalsystem->decals, old.decals, decalsystem->numdecals * sizeof(tridecal_t));
@@ -12069,7 +12092,7 @@ static void R_DecalSystem_SpawnTriangle(decalsystem_t *decalsystem, const float 
 	// grab a decal and search for another free slot for the next one
 	decals = decalsystem->decals;
 	decal = decalsystem->decals + (i = decalsystem->freedecal++);
-	for (i = decalsystem->freedecal;i < decalsystem->numdecals && decals[i].color4f[0][3];i++)
+	for (i = decalsystem->freedecal;i < decalsystem->numdecals && decals[i].flags;i++)
 		;
 	decalsystem->freedecal = i;
 	if (decalsystem->numdecals <= i)
@@ -12083,15 +12106,15 @@ static void R_DecalSystem_SpawnTriangle(decalsystem_t *decalsystem, const float 
 	decal->color4f[0][0] = c0[0];
 	decal->color4f[0][1] = c0[1];
 	decal->color4f[0][2] = c0[2];
-	decal->color4f[0][3] = 1;
+	decal->color4f[0][3] = c0[3];
 	decal->color4f[1][0] = c1[0];
 	decal->color4f[1][1] = c1[1];
 	decal->color4f[1][2] = c1[2];
-	decal->color4f[1][3] = 1;
+	decal->color4f[1][3] = c1[3];
 	decal->color4f[2][0] = c2[0];
 	decal->color4f[2][1] = c2[1];
 	decal->color4f[2][2] = c2[2];
-	decal->color4f[2][3] = 1;
+	decal->color4f[2][3] = c2[3];
 	decal->vertex3f[0][0] = v0[0];
 	decal->vertex3f[0][1] = v0[1];
 	decal->vertex3f[0][2] = v0[2];
@@ -12107,6 +12130,7 @@ static void R_DecalSystem_SpawnTriangle(decalsystem_t *decalsystem, const float 
 	decal->texcoord2f[1][1] = t1[1];
 	decal->texcoord2f[2][0] = t2[0];
 	decal->texcoord2f[2][1] = t2[1];
+	decal->flags = 1;
 	TriangleNormal(v0, v1, v2, decal->plane);
 	VectorNormalize(decal->plane);
 	decal->plane[3] = DotProduct(v0, decal->plane);
@@ -12115,6 +12139,8 @@ static void R_DecalSystem_SpawnTriangle(decalsystem_t *decalsystem, const float 
 extern cvar_t cl_decals_bias;
 extern cvar_t cl_decals_models;
 extern cvar_t cl_decals_newsystem_intensitymultiplier;
+extern cvar_t cl_decals_newsystem_projectiondistancefade;
+
 // baseparms, parms, temps
 static void R_DecalSystem_SplatTriangle(decalsystem_t *decalsystem, float r, float g, float b, float a, float s1, float t1, float s2, float t2, int decalsequence, qboolean dynamic, float (*planes)[4], matrix4x4_t *projection, int triangleindex, int surfaceindex)
 {
@@ -12195,12 +12221,15 @@ static void R_DecalSystem_SplatTriangle(decalsystem_t *decalsystem, float r, flo
 		tc[cornerindex][0] = (temp[1]+1.0f)*0.5f * (s2-s1) + s1;
 		tc[cornerindex][1] = (temp[2]+1.0f)*0.5f * (t2-t1) + t1;
 		// calculate distance fade from the projection origin
-		f = a * (1.0f-fabs(temp[0])) * cl_decals_newsystem_intensitymultiplier.value;
+		if (cl_decals_newsystem_projectiondistancefade.integer)
+			f = a * (1.0f-fabs(temp[0])) * cl_decals_newsystem_intensitymultiplier.value;
+		else
+			f = a * cl_decals_newsystem_intensitymultiplier.value;
 		f = bound(0.0f, f, 1.0f);
-		c[cornerindex][0] = r * f;
-		c[cornerindex][1] = g * f;
-		c[cornerindex][2] = b * f;
-		c[cornerindex][3] = 1.0f;
+		c[cornerindex][0] = r;
+		c[cornerindex][1] = g;
+		c[cornerindex][2] = b;
+		c[cornerindex][3] = f;
 		//VectorMA(v[cornerindex], cl_decals_bias.value, localnormal, v[cornerindex]);
 	}
 	if (dynamic)
@@ -12474,7 +12503,7 @@ static void R_DrawModelDecals_FadeEntity(entity_render_t *ent)
 
 	for (i = 0, decal = decalsystem->decals;i < numdecals;i++, decal++)
 	{
-		if (decal->color4f[0][3])
+		if (decal->flags)
 		{
 			decal->lived += frametime;
 			if (killsequence - decal->decalsequence > 0 || decal->lived >= lifetime)
@@ -12486,13 +12515,13 @@ static void R_DrawModelDecals_FadeEntity(entity_render_t *ent)
 		}
 	}
 	decal = decalsystem->decals;
-	while (numdecals > 0 && !decal[numdecals-1].color4f[0][3])
+	while (numdecals > 0 && !decal[numdecals-1].flags)
 		numdecals--;
 
 	// collapse the array by shuffling the tail decals into the gaps
 	for (;;)
 	{
-		while (decalsystem->freedecal < numdecals && decal[decalsystem->freedecal].color4f[0][3])
+		while (decalsystem->freedecal < numdecals && decal[decalsystem->freedecal].flags)
 			decalsystem->freedecal++;
 		if (decalsystem->freedecal == numdecals)
 			break;
@@ -12509,7 +12538,8 @@ static void R_DrawModelDecals_FadeEntity(entity_render_t *ent)
 }
 
 extern skinframe_t *decalskinframe;
-static void R_DrawModelDecals_Entity(entity_render_t *ent)
+extern cvar_t cl_decals_fogexp;
+static void R_DrawModelDecals_Mesh(entity_render_t *ent, int meshnum, float colorscale, float alphascale, qboolean usealpha)
 {
 	int i;
 	decalsystem_t *decalsystem = &ent->decalsystem;
@@ -12525,17 +12555,6 @@ static void R_DrawModelDecals_Entity(entity_render_t *ent)
 	int numtris = 0;
 
 	numdecals = decalsystem->numdecals;
-	if (!numdecals)
-		return;
-
-	if (r_showsurfaces.integer)
-		return;
-
-	if (ent->model != decalsystem->model || ent->alpha < 1 || (ent->flags & RENDER_ADDITIVE))
-	{
-		R_DecalSystem_Reset(decalsystem);
-		return;
-	}
 
 	// if the model is static it doesn't matter what value we give for
 	// wantnormals and wanttangents, so this logic uses only rules applicable
@@ -12546,16 +12565,15 @@ static void R_DrawModelDecals_Entity(entity_render_t *ent)
 		RSurf_ActiveModelEntity(ent, false, false, false);
 
 	decalsystem->lastupdatetime = r_refdef.scene.time;
-
 	faderate = 1.0f / max(0.001f, cl_decals_fadetime.value);
 
 	// update vertex positions for animated models
-	v3f = decalsystem->vertex3f;
-	c4f = decalsystem->color4f;
-	t2f = decalsystem->texcoord2f;
+	v3f = decalsystem->mesh[meshnum].vertex3f;
+	c4f = decalsystem->mesh[meshnum].color4f;
+	t2f = decalsystem->mesh[meshnum].texcoord2f;
 	for (i = 0, decal = decalsystem->decals;i < numdecals;i++, decal++)
 	{
-		if (!decal->color4f[0][3])
+		if (!decal->flags)
 			continue;
 
 		if (surfacevisible && !surfacevisible[decal->surfaceindex])
@@ -12567,22 +12585,53 @@ static void R_DrawModelDecals_Entity(entity_render_t *ent)
 
 		// update color values for fading decals
 		if (decal->lived >= cl_decals_time.value)
-			alpha = 1 - faderate * (decal->lived - cl_decals_time.value);
+			alpha = (1 - faderate * (decal->lived - cl_decals_time.value)) * alphascale;
 		else
-			alpha = 1.0f;
+			alpha = alphascale;
 
-		c4f[ 0] = decal->color4f[0][0] * alpha;
-		c4f[ 1] = decal->color4f[0][1] * alpha;
-		c4f[ 2] = decal->color4f[0][2] * alpha;
-		c4f[ 3] = 1;
-		c4f[ 4] = decal->color4f[1][0] * alpha;
-		c4f[ 5] = decal->color4f[1][1] * alpha;
-		c4f[ 6] = decal->color4f[1][2] * alpha;
-		c4f[ 7] = 1;
-		c4f[ 8] = decal->color4f[2][0] * alpha;
-		c4f[ 9] = decal->color4f[2][1] * alpha;
-		c4f[10] = decal->color4f[2][2] * alpha;
-		c4f[11] = 1;
+		// calc colors
+		if (usealpha)
+		{
+			c4f[ 0] = (1.0 - decal->color4f[0][0]) * colorscale;
+			c4f[ 1] = (1.0 - decal->color4f[0][1]) * colorscale;
+			c4f[ 2] = (1.0 - decal->color4f[0][2]) * colorscale;
+			c4f[ 3] = decal->color4f[0][3] * alpha;
+			c4f[ 4] = (1.0 - decal->color4f[1][0]) * colorscale;
+			c4f[ 5] = (1.0 - decal->color4f[1][1]) * colorscale;
+			c4f[ 6] = (1.0 - decal->color4f[1][2]) * colorscale;
+			c4f[ 7] = decal->color4f[1][3] * alpha;
+			c4f[ 8] = (1.0 - decal->color4f[2][0]) * colorscale;
+			c4f[ 9] = (1.0 - decal->color4f[2][1]) * colorscale;
+			c4f[10] = (1.0 - decal->color4f[2][2]) * colorscale;
+			c4f[11] = decal->color4f[2][3] * alpha;
+		}
+		else
+		{
+			alpha /= colorscale;
+			c4f[ 0] = decal->color4f[0][0] * c4f[ 3] * alpha;
+			c4f[ 1] = decal->color4f[0][1] * c4f[ 3] * alpha;
+			c4f[ 2] = decal->color4f[0][2] * c4f[ 3] * alpha;
+			c4f[ 3] = 1;
+			c4f[ 4] = decal->color4f[1][0] * c4f[ 7] * alpha;
+			c4f[ 5] = decal->color4f[1][1] * c4f[ 7] * alpha;
+			c4f[ 6] = decal->color4f[1][2] * c4f[ 7] * alpha;
+			c4f[ 7] = 1;
+			c4f[ 8] = decal->color4f[2][0] * c4f[11] * alpha;
+			c4f[ 9] = decal->color4f[2][1] * c4f[11] * alpha;
+			c4f[10] = decal->color4f[2][2] * c4f[11] * alpha;
+			c4f[11] = 1;
+
+			// apply fog
+			if (r_refdef.fogenabled)
+			{
+				alpha = pow(RSurf_FogVertex(v3f), cl_decals_fogexp.value);
+				VectorScale(c4f, alpha, c4f);
+				alpha = pow(RSurf_FogVertex(v3f + 3), cl_decals_fogexp.value);
+				VectorScale(c4f + 4, alpha, c4f + 4);
+				alpha = pow(RSurf_FogVertex(v3f + 6), cl_decals_fogexp.value);
+				VectorScale(c4f + 8, alpha, c4f + 8);
+			}
+		}
 
 		t2f[0] = decal->texcoord2f[0][0];
 		t2f[1] = decal->texcoord2f[0][1];
@@ -12606,16 +12655,6 @@ static void R_DrawModelDecals_Entity(entity_render_t *ent)
 			VectorCopy(decal->vertex3f[2], v3f + 6);
 		}
 
-		if (r_refdef.fogenabled)
-		{
-			alpha = RSurf_FogVertex(v3f);
-			VectorScale(c4f, alpha, c4f);
-			alpha = RSurf_FogVertex(v3f + 3);
-			VectorScale(c4f + 4, alpha, c4f + 4);
-			alpha = RSurf_FogVertex(v3f + 6);
-			VectorScale(c4f + 8, alpha, c4f + 8);
-		}
-
 		v3f += 9;
 		c4f += 12;
 		t2f += 6;
@@ -12628,19 +12667,53 @@ static void R_DrawModelDecals_Entity(entity_render_t *ent)
 
 		// now render the decals all at once
 		// (this assumes they all use one particle font texture!)
-		RSurf_ActiveCustomEntity(&rsurface.matrix, &rsurface.inversematrix, rsurface.ent_flags, ent->shadertime, 1, 1, 1, 1, numdecals*3, decalsystem->vertex3f, decalsystem->texcoord2f, NULL, NULL, NULL, decalsystem->color4f, numtris, decalsystem->element3i, decalsystem->element3s, false, false);
+		RSurf_ActiveCustomEntity(&rsurface.matrix, &rsurface.inversematrix, rsurface.ent_flags, ent->shadertime, 1, 1, 1, 1, numdecals*3, decalsystem->mesh[meshnum].vertex3f, decalsystem->mesh[meshnum].texcoord2f, NULL, NULL, NULL, decalsystem->mesh[meshnum].color4f, numtris, decalsystem->element3i, decalsystem->element3s, false, false);
 //		R_Mesh_ResetTextureState();
-		R_Mesh_PrepareVertices_Generic_Arrays(numtris * 3, decalsystem->vertex3f, decalsystem->color4f, decalsystem->texcoord2f);
+		R_Mesh_PrepareVertices_Generic_Arrays(numtris * 3, decalsystem->mesh[meshnum].vertex3f, decalsystem->mesh[meshnum].color4f, decalsystem->mesh[meshnum].texcoord2f);
 		GL_DepthMask(false);
 		GL_DepthRange(0, 1);
 		GL_PolygonOffset(rsurface.basepolygonfactor + r_polygonoffset_decals_factor.value, rsurface.basepolygonoffset + r_polygonoffset_decals_offset.value);
 		GL_DepthTest(true);
 		GL_CullFace(GL_NONE);
-		GL_BlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_COLOR);
-		R_SetupShader_Generic(decalskinframe->base, NULL, GL_MODULATE, 1, false, false, false);
+		if (usealpha)
+		{
+			GL_BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			R_SetupShader_Generic(decalskinframe->base, NULL, GL_MODULATE, 1, true, false, false, true);
+		}
+		else
+		{
+			GL_BlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_COLOR);
+			R_SetupShader_Generic(decalskinframe->base, NULL, GL_MODULATE, 1, false, false, false, false);
+		}
 		R_Mesh_Draw(0, numtris * 3, 0, numtris, decalsystem->element3i, NULL, 0, decalsystem->element3s, NULL, 0);
 	}
 }
+
+extern cvar_t cl_decals_alphablend;
+extern cvar_t cl_decals_alphablend_colorscale;
+extern cvar_t cl_decals_colorscale;
+extern cvar_t cl_decals_alphascale;
+static void R_DrawModelDecals_Entity(entity_render_t *ent)
+{
+	if (!ent->decalsystem.numdecals)
+		return;
+	if (r_showsurfaces.integer)
+		return;
+	if (ent->model != ent->decalsystem.model || ent->alpha < 1 || (ent->flags & RENDER_ADDITIVE))
+	{
+		R_DecalSystem_Reset(&ent->decalsystem);
+		return;
+	}
+
+	// draw the standart invmod decals
+	if (cl_decals_alphablend.value < 1.0f)
+		R_DrawModelDecals_Mesh( ent, 0, cl_decals_colorscale.value, cl_decals_alphascale.value, false );
+
+	// VorteX: experimental alpha blend decals
+	if (cl_decals_alphablend.value > 0)
+		R_DrawModelDecals_Mesh( ent, 1, cl_decals_colorscale.value * cl_decals_alphablend_colorscale.value, cl_decals_alphablend.value * cl_decals_alphascale.value, true );
+}
+
 
 static void R_DrawModelDecals(void)
 {

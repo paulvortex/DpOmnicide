@@ -808,6 +808,11 @@ static void VM_CL_R_SetView (prvm_prog_t *prog)
 
 	c = (int)PRVM_G_FLOAT(OFS_PARM0);
 
+	// default return values
+	PRVM_G_FLOAT(OFS_RETURN) = 0;
+	VectorClear(PRVM_G_VECTOR(OFS_RETURN));
+	PRVM_G_INT(OFS_RETURN) = 0;
+
 	// return value?
 	if (prog->argc < 2)
 	{
@@ -928,6 +933,11 @@ static void VM_CL_R_SetView (prvm_prog_t *prog)
 			break;
 		case VF_FOG_FADEDEPTH:
 			PRVM_G_FLOAT(OFS_RETURN) = r_refdef.fog_fadedepth;
+			break;
+		case VF_FOG_HEIGHTTEXTURE:
+			PRVM_G_INT(OFS_RETURN) = PRVM_SetTempString(prog, r_refdef.fog_height_texturename);
+			break;
+		case VF_FOG_CLEAR:
 			break;
 		case VF_MINFPS_QUALITY:
 			PRVM_G_FLOAT(OFS_RETURN) = r_refdef.view.quality;
@@ -1081,6 +1091,12 @@ static void VM_CL_R_SetView (prvm_prog_t *prog)
 		break;
 	case VF_FOG_FADEDEPTH:
 		r_refdef.fog_fadedepth = k;
+		break;
+	case VF_FOG_HEIGHTTEXTURE:
+		strlcpy(r_refdef.fog_height_texturename, PRVM_G_STRING(OFS_PARM1), sizeof(r_refdef.fog_height_texturename));
+		break;
+	case VF_FOG_CLEAR:
+		FOG_clear();
 		break;
 	case VF_MINFPS_QUALITY:
 		r_refdef.view.quality = k;
@@ -3338,7 +3354,7 @@ static void VM_DrawPolygonCallback (const entity_render_t *ent, const rtlight_t 
 		rtexture_t *tex = polys->data_triangles[surfacelist[surfacelistindex]].texture;
 		int drawflag = polys->data_triangles[surfacelist[surfacelistindex]].drawflag;
 		DrawQ_ProcessDrawFlag(drawflag, polys->data_triangles[surfacelist[surfacelistindex]].hasalpha);
-		R_SetupShader_Generic(tex, NULL, GL_MODULATE, 1, (drawflag != DRAWFLAG_MODULATE && drawflag != DRAWFLAG_2XMODULATE), false, false);
+		R_SetupShader_Generic(tex, NULL, GL_MODULATE, 1, (drawflag != DRAWFLAG_MODULATE && drawflag != DRAWFLAG_2XMODULATE), false, false, false);
 		numtriangles = 0;
 		for (;surfacelistindex < numsurfaces;surfacelistindex++)
 		{

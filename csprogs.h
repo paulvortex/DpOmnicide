@@ -42,21 +42,23 @@
 // what is this doing here? This is a DP extension introduced by Black, should be in 4xx range
 #define VF_CLEARSCREEN		201 //(float)
 
-// what is this doing here? This is a DP extension introduced by VorteX, should be in 4xx range
-#define VF_FOG_DENSITY		202 //(float)
-#define VF_FOG_COLOR		203 //(vector)
-#define VF_FOG_COLOR_R		204 //(float)
-#define VF_FOG_COLOR_G		205 //(float)
-#define VF_FOG_COLOR_B		206 //(float)
-#define VF_FOG_ALPHA		207 //(float)
-#define VF_FOG_START		208 //(float)
-#define VF_FOG_END   		209 //(float)
-#define VF_FOG_HEIGHT		210 //(float)
-#define VF_FOG_FADEDEPTH	211 //(float)
-
 // DP's extension range
 #define VF_MAINVIEW		400 //(float)
 #define VF_MINFPS_QUALITY	401 //(float)
+
+// fog parms
+#define VF_FOG_DENSITY		 402 //(float)
+#define VF_FOG_COLOR		 403 //(vector)
+#define VF_FOG_COLOR_R		 404 //(float)
+#define VF_FOG_COLOR_G		 405 //(float)
+#define VF_FOG_COLOR_B		 406 //(float)
+#define VF_FOG_ALPHA		 407 //(float)
+#define VF_FOG_START		 408 //(float)
+#define VF_FOG_END   		 409 //(float)
+#define VF_FOG_HEIGHT		 410 //(float)
+#define VF_FOG_FADEDEPTH	 411 //(float)
+#define VF_FOG_HEIGHTTEXTURE 412 //(string)
+#define VF_FOG_CLEAR         413
 
 #define RF_VIEWMODEL		1	// The entity is never drawn in mirrors. In engines with realtime lighting, it casts no shadows.
 #define RF_EXTERNALMODEL	2	// The entity is appears in mirrors but not in the normal view. It does still cast shadows in engines with realtime lighting.

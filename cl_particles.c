@@ -306,10 +306,15 @@ cvar_t cl_decals_newsystem = {CVAR_SAVE, "cl_decals_newsystem", "1", "enables ne
 cvar_t cl_decals_newsystem_intensitymultiplier = {CVAR_SAVE, "cl_decals_newsystem_intensitymultiplier", "2", "boosts intensity of decals (because the distance fade can make them hard to see otherwise)"};
 cvar_t cl_decals_newsystem_immediatebloodstain = {CVAR_SAVE, "cl_decals_newsystem_immediatebloodstain", "2", "0: no on-spawn blood stains; 1: on-spawn blood stains for pt_blood; 2: always use on-spawn blood stains"};
 cvar_t cl_decals_newsystem_bloodsmears = {CVAR_SAVE, "cl_decals_newsystem_bloodsmears", "1", "enable use of particle velocity as decal projection direction rather than surface normal"};
+cvar_t cl_decals_newsystem_projectiondistancefade = {CVAR_SAVE, "cl_decals_newsystem_projectiondistancefade", "1", "enable use particle fade based on projection distance"};
 cvar_t cl_decals_models = {CVAR_SAVE, "cl_decals_models", "0", "enables decals on animated models (if newsystem is also 1)"};
 cvar_t cl_decals_bias = {CVAR_SAVE, "cl_decals_bias", "0.125", "distance to bias decals from surface to prevent depth fighting"};
 cvar_t cl_decals_max = {CVAR_SAVE, "cl_decals_max", "4096", "maximum number of decals allowed to exist in the world at once"};
-
+cvar_t cl_decals_alphablend = {CVAR_SAVE, "cl_decals_alphablend", "0", "draw second layer of decals as alpha blended material (slower, due to additional render call). Value controls opacity"};
+cvar_t cl_decals_alphablend_colorscale = {CVAR_SAVE, "cl_decals_alphablend_colorscale", "0.5", "additional color scale for alpha blended decals"};
+cvar_t cl_decals_colorscale = {CVAR_SAVE, "cl_decals_colorscale", "1", "decals global color scale"};
+cvar_t cl_decals_alphascale = {CVAR_SAVE, "cl_decals_alphascale", "1", "decals global alpha scale"};
+cvar_t cl_decals_fogexp = {CVAR_SAVE, "cl_decals_fogexp", "1", "intensity at which fog scales alpha of decals"};
 
 static void CL_Particles_ParseEffectInfo(const char *textstart, const char *textend, const char *filename)
 {
@@ -619,9 +624,15 @@ void CL_Particles_Init (void)
 	Cvar_RegisterVariable (&cl_decals_newsystem_intensitymultiplier);
 	Cvar_RegisterVariable (&cl_decals_newsystem_immediatebloodstain);
 	Cvar_RegisterVariable (&cl_decals_newsystem_bloodsmears);
+	Cvar_RegisterVariable (&cl_decals_newsystem_projectiondistancefade);
 	Cvar_RegisterVariable (&cl_decals_models);
 	Cvar_RegisterVariable (&cl_decals_bias);
 	Cvar_RegisterVariable (&cl_decals_max);
+	Cvar_RegisterVariable (&cl_decals_alphablend);
+	Cvar_RegisterVariable (&cl_decals_alphablend_colorscale);
+	Cvar_RegisterVariable (&cl_decals_colorscale);
+	Cvar_RegisterVariable (&cl_decals_alphascale);
+	Cvar_RegisterVariable (&cl_decals_fogexp);
 }
 
 void CL_Particles_Shutdown (void)
@@ -2553,7 +2564,7 @@ static void R_DrawDecal_TransparentCallback(const entity_render_t *ent, const rt
 	// now render the decals all at once
 	// (this assumes they all use one particle font texture!)
 	GL_BlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_COLOR);
-	R_SetupShader_Generic(particletexture[63].texture, NULL, GL_MODULATE, 1, false, false, true);
+	R_SetupShader_Generic(particletexture[63].texture, NULL, GL_MODULATE, 1, false, false, true, false);
 	R_Mesh_PrepareVertices_Generic_Arrays(numsurfaces * 4, particle_vertex3f, particle_color4f, particle_texcoord2f);
 	R_Mesh_Draw(0, numsurfaces * 4, 0, numsurfaces * 2, NULL, NULL, 0, particle_elements, NULL, 0);
 }
@@ -2872,7 +2883,7 @@ static void R_DrawParticle_TransparentCallback(const entity_render_t *ent, const
 		if (texture != particletexture[p->texnum].texture)
 		{
 			texture = particletexture[p->texnum].texture;
-			R_SetupShader_Generic(texture, NULL, GL_MODULATE, 1, (p->blendmode == PBLEND_INVMOD) ? false : true, false, false);
+			R_SetupShader_Generic(texture, NULL, GL_MODULATE, 1, (p->blendmode == PBLEND_INVMOD) ? false : true, false, false, false);
 		}
 
 		if (p->blendmode == PBLEND_INVMOD)

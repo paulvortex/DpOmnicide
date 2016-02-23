@@ -218,8 +218,18 @@ typedef struct tridecal_s
 	int				surfaceindex;
 	// old decals are killed to obey cl_decals_max
 	int				decalsequence;
+	// flags
+	int             flags;
 }
 tridecal_t;
+
+typedef struct decalsystemlayer_s
+{
+	float *vertex3f;
+	float *texcoord2f;
+	float *color4f;
+}
+decalsystemlayer_t;
 
 typedef struct decalsystem_s
 {
@@ -229,9 +239,7 @@ typedef struct decalsystem_s
 	int freedecal;
 	int numdecals;
 	tridecal_t *decals;
-	float *vertex3f;
-	float *texcoord2f;
-	float *color4f;
+	decalsystemlayer_t mesh[2];
 	int *element3i;
 	unsigned short *element3s;
 }
