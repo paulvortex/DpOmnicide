@@ -52,6 +52,7 @@ cvar_t mod_q3bsp_optimizedtraceline = {0, "mod_q3bsp_optimizedtraceline", "1", "
 cvar_t mod_q3bsp_debugtracebrush = {0, "mod_q3bsp_debugtracebrush", "0", "selects different tracebrush bsp recursion algorithms (for debugging purposes only)"};
 cvar_t mod_q3bsp_lightmapmergepower = {CVAR_SAVE, "mod_q3bsp_lightmapmergepower", "4", "merges the quake3 128x128 lightmap textures into larger lightmap group textures to speed up rendering, 1 = 256x256, 2 = 512x512, 3 = 1024x1024, 4 = 2048x2048, 5 = 4096x4096, ..."};
 cvar_t mod_q3bsp_lightmapskinframes = {CVAR_SAVE, "mod_q3bsp_lightmapskinframes", "0", "load lightmaps as skin frames: 1) precompressed textures can used for lightmap (DDS/KTX ones). 2) lightmap precache possible (previous level have some model with surface set to lightmap texture). 3) JPG's for lightmaps are posible. 4) lightmap merging are notsupported, so it is recommended that map will have only one large lightmap"};
+cvar_t mod_q3bsp_lightmapskinframes_path = {CVAR_SAVE, "mod_q3bsp_lightmapskinframes_path", "", "sets a additional path to lightmap textures, could be 'textures/' and so on"};
 cvar_t mod_q3bsp_nolightmaps = {CVAR_SAVE, "mod_q3bsp_nolightmaps", "0", "do not load lightmaps in Q3BSP maps (to save video RAM, but be warned: it looks ugly)"};
 cvar_t mod_q3bsp_tracelineofsight_brushes = {0, "mod_q3bsp_tracelineofsight_brushes", "0", "enables culling of entities behind detail brushes, curves, etc"};
 cvar_t mod_q3bsp_sRGBlightmaps = {0, "mod_q3bsp_sRGBlightmaps", "0", "treat lightmaps from Q3 maps as sRGB when vid_sRGB is active"};
@@ -104,6 +105,7 @@ void Mod_BrushInit(void)
 	Cvar_RegisterVariable(&mod_q3bsp_debugtracebrush);
 	Cvar_RegisterVariable(&mod_q3bsp_lightmapmergepower);
 	Cvar_RegisterVariable(&mod_q3bsp_lightmapskinframes);
+	Cvar_RegisterVariable(&mod_q3bsp_lightmapskinframes_path);
 	Cvar_RegisterVariable(&mod_q3bsp_nolightmaps);
 	Cvar_RegisterVariable(&mod_q3bsp_sRGBlightmaps);
 	Cvar_RegisterVariable(&mod_q3bsp_fixq3map2bugs);
@@ -5047,9 +5049,9 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 			if (developer_loading.integer)
 				Con_Printf("Using external lightmap skinframes\n");
 			FS_StripExtension(loadmodel->name, mapname, sizeof(mapname));
-
+			
 			// load first lightmap
-			sf = R_SkinFrame_LoadExternal(va(vabuf, sizeof(vabuf), "%s/lm_%04d", mapname, 0), TEXF_CLAMP | TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), true, false);
+			sf = R_SkinFrame_LoadExternal(va(vabuf, sizeof(vabuf), "%s%s/lm_%04d", mod_q3bsp_lightmapskinframes_path.value, mapname, 0), TEXF_CLAMP | TEXF_FORCELINEAR | (gl_texturecompression_q3bsplightmaps.integer ? TEXF_COMPRESS : 0), true, false);
 			inpixels[0] = NULL;
 			if(!sf)
 				return;
