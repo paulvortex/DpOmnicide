@@ -488,6 +488,9 @@ typedef struct q3shaderinfo_s
 	// texture animation
 	float scrollblend[3]; // normalmap-based scroll blend effect - scale, speed, distort
 
+	// texture explicit dimensions
+	float texturewidth, textureheight;
+
 	// offsetmapping
 	dpoffsetmapping_technique_t offsetmapping;
 	float offsetscale;

@@ -1758,6 +1758,8 @@ void Mod_LoadQ3Shaders(void)
 			shader.scrollblend[0] = 0;
 			shader.scrollblend[1] = 0;
 			shader.scrollblend[2] = 0;
+			shader.texturewidth = 1;
+			shader.textureheight = 1;
 			shader.offsetmapping = (mod_q3shader_default_offsetmapping.value) ? OFFSETMAPPING_DEFAULT : OFFSETMAPPING_OFF;
 			shader.offsetscale = mod_q3shader_default_offsetmapping_scale.value;
 			shader.offsetbias = mod_q3shader_default_offsetmapping_bias.value;
@@ -2356,6 +2358,11 @@ void Mod_LoadQ3Shaders(void)
 				{
 					shader.rtlightambient = atof(parameter[1]);
 				}
+				else if (!strcasecmp(parameter[0], "dptexturesize") && numparameters >= 3)
+				{
+					shader.texturewidth = atof(parameter[1]);
+					shader.textureheight = atof(parameter[2]);
+				}
 				else if (!strcasecmp(parameter[0], "dpoffsetmapping") && numparameters >= 2)
 				{
 					if (!strcasecmp(parameter[1], "disable") || !strcasecmp(parameter[1], "none") || !strcasecmp(parameter[1], "off"))
@@ -2626,6 +2633,8 @@ qboolean Mod_LoadTextureFromQ3Shader(texture_t *texture, const char *name, qbool
 	if(defaulttexflags & TEXF_ISSPRITE)
 		texflagsor |= TEXF_ISSPRITE;
 	// unless later loaded from the shader
+	texture->width = 1;
+	texture->height = 1;
 	texture->offsetmapping = (mod_noshader_default_offsetmapping.value) ? OFFSETMAPPING_DEFAULT : OFFSETMAPPING_OFF;
 	texture->offsetscale = 1;
 	texture->offsetbias = 0;
@@ -2789,6 +2798,8 @@ nothing                GL_ZERO GL_ONE
 		Vector4Copy(shader->reflectcolor4f, texture->reflectcolor4f);
 		texture->r_water_wateralpha = shader->r_water_wateralpha;
 		VectorCopy(shader->scrollblend, texture->scrollblend);
+		texture->width = shader->texturewidth;
+		texture->height = shader->textureheight;
 		texture->offsetmapping = shader->offsetmapping;
 		texture->offsetscale = shader->offsetscale;
 		texture->offsetbias = shader->offsetbias;

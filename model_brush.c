@@ -1704,6 +1704,8 @@ static void Mod_Q1BSP_LoadTextures(sizebuf_t *sb)
 		tx->reflectfactor = 1;
 		Vector4Set(tx->reflectcolor4f, 1, 1, 1, 1);
 		tx->r_water_wateralpha = 1;
+		tx->width = 1;
+		tx->height = 1;
 		tx->offsetmapping = OFFSETMAPPING_DEFAULT;
 		tx->offsetscale = 1;
 		tx->offsetbias = 0;
