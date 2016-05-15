@@ -46,6 +46,7 @@ cvar_t r_texture_dds_load_etc2 = {0, "r_texture_dds_load_etc2", "0", "try load E
 cvar_t r_texture_dds_swdecode = {0, "r_texture_dds_swdecode", "0", "0: don't software decode DDS, 1: software decode DDS if unsupported, 2: always software decode DDS"};
 extern cvar_t r_texture_png_iccmode;
 extern cvar_t r_texture_jpeg_iccmode;
+extern cvar_t r_texture_tga_load_alphamode;
 
 qboolean	gl_filter_force = false;
 int		gl_filter_min = GL_LINEAR_MIPMAP_LINEAR;
@@ -1038,6 +1039,7 @@ void R_Textures_Init (void)
 	Cvar_RegisterVariable (&r_texture_dds_swdecode);
 	Cvar_RegisterVariable (&r_texture_png_iccmode);
 	Cvar_RegisterVariable (&r_texture_jpeg_iccmode);
+	Cvar_RegisterVariable (&r_texture_tga_load_alphamode);
 
 	R_RegisterModule("R_Textures", r_textures_start, r_textures_shutdown, r_textures_newmap, r_textures_devicelost, r_textures_devicerestored);
 }

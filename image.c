@@ -385,6 +385,8 @@ static void PrintTargaHeader(TargaHeader *t)
 LoadTGA
 =============
 */
+cvar_t r_texture_tga_load_alphamode = {0, "r_texture_tga_load_alphamode", "1", "0: trust alphabits only (old style mode), 1: trust alphabits but also check bitsperpixel == 32"};
+
 unsigned char *LoadTGA_BGRA (const unsigned char *f, int filesize, int *miplevel, qboolean *sRGBcolorspace)
 {
 	int x, y, pix_inc, row_inci, runlen, alphabits;
@@ -515,6 +517,11 @@ unsigned char *LoadTGA_BGRA (const unsigned char *f, int filesize, int *miplevel
 
 	// number of attribute bits per pixel, we only support 0 or 8
 	alphabits = targa_header.attributes & 0x0F;
+
+	// fix up some nasty encoders which doesn't set alphabits
+	if (r_texture_tga_load_alphamode.integer == 1)
+		if (targa_header.pixel_size == 32)
+			alphabits = 8;
 	if (alphabits != 8 && alphabits != 0)
 	{
 		Con_Print("LoadTGA: only 0 or 8 attribute (alpha) bits supported\n");
