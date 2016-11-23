@@ -119,6 +119,7 @@ const char *prvm_opnames[] =
 PRVM_PrintStatement
 =================
 */
+extern cvar_t prvm_coverage;
 extern cvar_t prvm_statementprofiling;
 extern cvar_t prvm_timeprofiling;
 static void PRVM_PrintStatement(prvm_prog_t *prog, mstatement_t *s)
@@ -129,7 +130,12 @@ static void PRVM_PrintStatement(prvm_prog_t *prog, mstatement_t *s)
 
 	Con_Printf("s%i: ", opnum);
 	if( prog->statement_linenums )
-		Con_Printf( "%s:%i: ", PRVM_GetString( prog, prog->xfunction->s_file ), prog->statement_linenums[ opnum ] );
+	{
+		if ( prog->statement_columnnums )
+			Con_Printf( "%s:%i:%i: ", PRVM_GetString( prog, prog->xfunction->s_file ), prog->statement_linenums[ opnum ], prog->statement_columnnums[ opnum ] );
+		else
+			Con_Printf( "%s:%i: ", PRVM_GetString( prog, prog->xfunction->s_file ), prog->statement_linenums[ opnum ] );
+	}
 
 	if (prvm_statementprofiling.integer)
 		Con_Printf("%7.0f ", prog->statement_profile[s - prog->statements]);
@@ -180,8 +186,11 @@ void PRVM_PrintFunctionStatements (prvm_prog_t *prog, const char *name)
 	for (i = firststatement;i < endstatement;i++)
 	{
 		PRVM_PrintStatement(prog, prog->statements + i);
-		prog->statement_profile[i] = 0;
+		if (!(prvm_coverage.integer & 4))
+			prog->statement_profile[i] = 0;
 	}
+	if (prvm_coverage.integer & 4)
+		Con_Printf("Collecting statement coverage, not flushing statement profile.\n");
 }
 
 /*
@@ -226,7 +235,12 @@ void PRVM_StackTrace (prvm_prog_t *prog)
 		else
 		{
 			if (prog->statement_linenums)
-				Con_Printf("%12s:%i : %s : statement %i\n", PRVM_GetString(prog, f->s_file), prog->statement_linenums[prog->stack[i].s], PRVM_GetString(prog, f->s_name), prog->stack[i].s - f->first_statement);
+			{
+				if (prog->statement_columnnums)
+					Con_Printf("%12s:%i:%i : %s : statement %i\n", PRVM_GetString(prog, f->s_file), prog->statement_linenums[prog->stack[i].s], prog->statement_columnnums[prog->stack[i].s], PRVM_GetString(prog, f->s_name), prog->stack[i].s - f->first_statement);
+				else
+					Con_Printf("%12s:%i : %s : statement %i\n", PRVM_GetString(prog, f->s_file), prog->statement_linenums[prog->stack[i].s], PRVM_GetString(prog, f->s_name), prog->stack[i].s - f->first_statement);
+			}
 			else
 				Con_Printf("%12s : %s : statement %i\n", PRVM_GetString(prog, f->s_file), PRVM_GetString(prog, f->s_name), prog->stack[i].s - f->first_statement);
 		}
@@ -445,6 +459,12 @@ void PRVM_Profile_f (void)
 	prvm_prog_t *prog;
 	int howmany;
 
+	if (prvm_coverage.integer & 1)
+	{
+		Con_Printf("Collecting function coverage, cannot profile - sorry!\n");
+		return;
+	}
+
 	howmany = 1<<30;
 	if (Cmd_Argc() == 3)
 		howmany = atoi(Cmd_Argv(2));
@@ -464,6 +484,12 @@ void PRVM_ChildProfile_f (void)
 {
 	prvm_prog_t *prog;
 	int howmany;
+
+	if (prvm_coverage.integer & 1)
+	{
+		Con_Printf("Collecting function coverage, cannot profile - sorry!\n");
+		return;
+	}
 
 	howmany = 1<<30;
 	if (Cmd_Argc() == 3)
@@ -654,6 +680,46 @@ void PRVM_Init_Exec(prvm_prog_t *prog)
 	// nothing here yet
 }
 
+/*
+==================
+Coverage
+==================
+*/
+// Note: in these two calls, prog->xfunction is assumed to be sane.
+static const char *PRVM_WhereAmI(char *buf, size_t bufsize, prvm_prog_t *prog, mfunction_t *func, int statement)
+{
+	if (prog->statement_linenums)
+	{
+		if (prog->statement_columnnums)
+			return va(buf, bufsize, "%s:%i:%i(%s, %i)", PRVM_GetString(prog, func->s_file), prog->statement_linenums[statement], prog->statement_columnnums[statement], PRVM_GetString(prog, func->s_name), statement - func->first_statement);
+		else
+			return va(buf, bufsize, "%s:%i(%s, %i)", PRVM_GetString(prog, func->s_file), prog->statement_linenums[statement], PRVM_GetString(prog, func->s_name), statement - func->first_statement);
+	}
+	else
+		return va(buf, bufsize, "%s(%s, %i)", PRVM_GetString(prog, func->s_file), PRVM_GetString(prog, func->s_name), statement - func->first_statement);
+}
+static void PRVM_FunctionCoverageEvent(prvm_prog_t *prog, mfunction_t *func)
+{
+	++prog->functions_covered;
+	Con_Printf("prvm_coverage: %s just called %s for the first time. Coverage: %.2f%%.\n", prog->name, PRVM_GetString(prog, func->s_name), prog->functions_covered * 100.0 / prog->numfunctions);
+}
+void PRVM_ExplicitCoverageEvent(prvm_prog_t *prog, mfunction_t *func, int statement)
+{
+	char vabuf[128];
+	++prog->explicit_covered;
+	Con_Printf("prvm_coverage: %s just executed a coverage() statement at %s for the first time. Coverage: %.2f%%.\n", prog->name, PRVM_WhereAmI(vabuf, sizeof(vabuf), prog, func, statement), prog->explicit_covered * 100.0 / prog->numexplicitcoveragestatements);
+}
+static void PRVM_StatementCoverageEvent(prvm_prog_t *prog, mfunction_t *func, int statement)
+{
+	char vabuf[128];
+	++prog->statements_covered;
+	Con_Printf("prvm_coverage: %s just executed a statement at %s for the first time. Coverage: %.2f%%.\n", prog->name, PRVM_WhereAmI(vabuf, sizeof(vabuf), prog, func, statement), prog->statements_covered * 100.0 / prog->numstatements);
+}
+
+#ifdef __GNUC__
+#define HAVE_COMPUTED_GOTOS 1
+#endif
+
 #define OPA ((prvm_eval_t *)&prog->globals.fp[st->operand[0]])
 #define OPB ((prvm_eval_t *)&prog->globals.fp[st->operand[1]])
 #define OPC ((prvm_eval_t *)&prog->globals.fp[st->operand[2]])
@@ -671,7 +737,7 @@ MVM_ExecuteProgram
 void MVM_ExecuteProgram (prvm_prog_t *prog, func_t fnum, const char *errormessage)
 {
 	mstatement_t	*st, *startst;
-	mfunction_t	*f, *newf;
+	mfunction_t		*func, *enterfunc;
 	prvm_edict_t	*ed;
 	prvm_eval_t	*ptr;
 	int		jumpcount, cachedpr_trace, exitdepth;
@@ -702,7 +768,7 @@ void MVM_ExecuteProgram (prvm_prog_t *prog, func_t fnum, const char *errormessag
 		prog->error_cmd("MVM_ExecuteProgram: %s", errormessage);
 	}
 
-	f = &prog->functions[fnum];
+	func = &prog->functions[fnum];
 
 	// after executing this function, delete all tempstrings it created
 	restorevm_tempstringsbuf_cursize = prog->tempstringsbuf.cursize;
@@ -713,7 +779,7 @@ void MVM_ExecuteProgram (prvm_prog_t *prog, func_t fnum, const char *errormessag
 	exitdepth = prog->depth;
 
 // make a stack frame
-	st = &prog->statements[PRVM_EnterFunction(prog, f)];
+	st = &prog->statements[PRVM_EnterFunction(prog, func)];
 	// save the starting statement pointer for profiling
 	// (when the function exits or jumps, the (st - startst) integer value is
 	// added to the function's profile counter)
@@ -722,11 +788,12 @@ void MVM_ExecuteProgram (prvm_prog_t *prog, func_t fnum, const char *errormessag
 	// instead of counting instructions, we count jumps
 	jumpcount = 0;
 	// add one to the callcount of this function because otherwise engine-called functions aren't counted
-	prog->xfunction->callcount++;
+	if (prog->xfunction->callcount++ == 0 && (prvm_coverage.integer & 1))
+		PRVM_FunctionCoverageEvent(prog, prog->xfunction);
 
 chooseexecprogram:
 	cachedpr_trace = prog->trace;
-	if (prvm_statementprofiling.integer || prog->trace || prog->watch_global >= 0 || prog->watch_edict >= 0 || prog->break_statement >= 0)
+	if (prog->trace || prog->watch_global_type != ev_void || prog->watch_field_type != ev_void || prog->break_statement >= 0)
 	{
 #define PRVMSLOWINTERPRETER 1
 		if (prvm_timeprofiling.integer)
@@ -762,7 +829,7 @@ cleanup:
 	prog->tempstringsbuf.cursize = restorevm_tempstringsbuf_cursize;
 
 	tm = Sys_DirtyTime() - calltime;if (tm < 0 || tm >= 1800) tm = 0;
-	f->totaltime += tm;
+	func->totaltime += tm;
 
 	if (prog == SVVM_prog)
 		SV_FlushBroadcastMessages();
@@ -777,7 +844,7 @@ CLVM_ExecuteProgram
 void CLVM_ExecuteProgram (prvm_prog_t *prog, func_t fnum, const char *errormessage)
 {
 	mstatement_t	*st, *startst;
-	mfunction_t	*f, *newf;
+	mfunction_t		*func, *enterfunc;
 	prvm_edict_t	*ed;
 	prvm_eval_t	*ptr;
 	int		jumpcount, cachedpr_trace, exitdepth;
@@ -808,7 +875,7 @@ void CLVM_ExecuteProgram (prvm_prog_t *prog, func_t fnum, const char *errormessa
 		prog->error_cmd("CLVM_ExecuteProgram: %s", errormessage);
 	}
 
-	f = &prog->functions[fnum];
+	func = &prog->functions[fnum];
 
 	// after executing this function, delete all tempstrings it created
 	restorevm_tempstringsbuf_cursize = prog->tempstringsbuf.cursize;
@@ -819,7 +886,7 @@ void CLVM_ExecuteProgram (prvm_prog_t *prog, func_t fnum, const char *errormessa
 	exitdepth = prog->depth;
 
 // make a stack frame
-	st = &prog->statements[PRVM_EnterFunction(prog, f)];
+	st = &prog->statements[PRVM_EnterFunction(prog, func)];
 	// save the starting statement pointer for profiling
 	// (when the function exits or jumps, the (st - startst) integer value is
 	// added to the function's profile counter)
@@ -828,11 +895,12 @@ void CLVM_ExecuteProgram (prvm_prog_t *prog, func_t fnum, const char *errormessa
 	// instead of counting instructions, we count jumps
 	jumpcount = 0;
 	// add one to the callcount of this function because otherwise engine-called functions aren't counted
-	prog->xfunction->callcount++;
+	if (prog->xfunction->callcount++ == 0 && (prvm_coverage.integer & 1))
+		PRVM_FunctionCoverageEvent(prog, prog->xfunction);
 
 chooseexecprogram:
 	cachedpr_trace = prog->trace;
-	if (prvm_statementprofiling.integer || prog->trace || prog->watch_global >= 0 || prog->watch_edict >= 0 || prog->break_statement >= 0)
+	if (prog->trace || prog->watch_global_type != ev_void || prog->watch_field_type != ev_void || prog->break_statement >= 0)
 	{
 #define PRVMSLOWINTERPRETER 1
 		if (prvm_timeprofiling.integer)
@@ -868,7 +936,7 @@ cleanup:
 	prog->tempstringsbuf.cursize = restorevm_tempstringsbuf_cursize;
 
 	tm = Sys_DirtyTime() - calltime;if (tm < 0 || tm >= 1800) tm = 0;
-	f->totaltime += tm;
+	func->totaltime += tm;
 
 	if (prog == SVVM_prog)
 		SV_FlushBroadcastMessages();
@@ -887,7 +955,7 @@ void PRVM_ExecuteProgram (prvm_prog_t *prog, func_t fnum, const char *errormessa
 #endif
 {
 	mstatement_t	*st, *startst;
-	mfunction_t	*f, *newf;
+	mfunction_t		*func, *enterfunc;
 	prvm_edict_t	*ed;
 	prvm_eval_t	*ptr;
 	int		jumpcount, cachedpr_trace, exitdepth;
@@ -918,7 +986,7 @@ void PRVM_ExecuteProgram (prvm_prog_t *prog, func_t fnum, const char *errormessa
 		prog->error_cmd("SVVM_ExecuteProgram: %s", errormessage);
 	}
 
-	f = &prog->functions[fnum];
+	func = &prog->functions[fnum];
 
 	// after executing this function, delete all tempstrings it created
 	restorevm_tempstringsbuf_cursize = prog->tempstringsbuf.cursize;
@@ -929,7 +997,7 @@ void PRVM_ExecuteProgram (prvm_prog_t *prog, func_t fnum, const char *errormessa
 	exitdepth = prog->depth;
 
 // make a stack frame
-	st = &prog->statements[PRVM_EnterFunction(prog, f)];
+	st = &prog->statements[PRVM_EnterFunction(prog, func)];
 	// save the starting statement pointer for profiling
 	// (when the function exits or jumps, the (st - startst) integer value is
 	// added to the function's profile counter)
@@ -938,11 +1006,12 @@ void PRVM_ExecuteProgram (prvm_prog_t *prog, func_t fnum, const char *errormessa
 	// instead of counting instructions, we count jumps
 	jumpcount = 0;
 	// add one to the callcount of this function because otherwise engine-called functions aren't counted
-	prog->xfunction->callcount++;
+	if (prog->xfunction->callcount++ == 0 && (prvm_coverage.integer & 1))
+		PRVM_FunctionCoverageEvent(prog, prog->xfunction);
 
 chooseexecprogram:
 	cachedpr_trace = prog->trace;
-	if (prvm_statementprofiling.integer || prog->trace || prog->watch_global >= 0 || prog->watch_edict >= 0 || prog->break_statement >= 0)
+	if (prog->trace || prog->watch_global_type != ev_void || prog->watch_field_type != ev_void || prog->break_statement >= 0)
 	{
 #define PRVMSLOWINTERPRETER 1
 		if (prvm_timeprofiling.integer)
@@ -978,7 +1047,7 @@ cleanup:
 	prog->tempstringsbuf.cursize = restorevm_tempstringsbuf_cursize;
 
 	tm = Sys_DirtyTime() - calltime;if (tm < 0 || tm >= 1800) tm = 0;
-	f->totaltime += tm;
+	func->totaltime += tm;
 
 	if (prog == SVVM_prog)
 		SV_FlushBroadcastMessages();

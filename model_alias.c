@@ -94,37 +94,37 @@ void Mod_Skeletal_BuildTransforms(const dp_model_t * RESTRICT model, const frame
 		for (i = 0;i < model->num_bones;i++)
 		{
 			// blend by transform each quaternion/translation into a dual-quaternion first, then blending
-			const short * RESTRICT pose7s = model->data_poses7s + 7 * (frameblend[0].subframe * model->num_bones + i);
-			float lerp = frameblend[0].lerp,
-				tx = pose7s[0], ty = pose7s[1], tz = pose7s[2],
-				rx = pose7s[3] * lerp,
-				ry = pose7s[4] * lerp,
-				rz = pose7s[5] * lerp,
-				rw = pose7s[6] * lerp,
-				dx = tx*rw + ty*rz - tz*ry,
-				dy = -tx*rz + ty*rw + tz*rx,
-				dz = tx*ry - ty*rx + tz*rw,
-				dw = -tx*rx - ty*ry - tz*rz,
+			const short * RESTRICT firstpose7s = model->data_poses7s + 7 * (frameblend[0].subframe * model->num_bones + i);
+			float firstlerp = frameblend[0].lerp,
+				firsttx = firstpose7s[0], firstty = firstpose7s[1], firsttz = firstpose7s[2],
+				rx = firstpose7s[3] * firstlerp,
+				ry = firstpose7s[4] * firstlerp,
+				rz = firstpose7s[5] * firstlerp,
+				rw = firstpose7s[6] * firstlerp,
+				dx = firsttx*rw + firstty*rz - firsttz*ry,
+				dy = -firsttx*rz + firstty*rw + firsttz*rx,
+				dz = firsttx*ry - firstty*rx + firsttz*rw,
+				dw = -firsttx*rx - firstty*ry - firsttz*rz,
 				scale, sx, sy, sz, sw;
 			for (blends = 1;blends < MAX_FRAMEBLENDS && frameblend[blends].lerp > 0;blends++)
 			{
-				const short * RESTRICT pose7s = model->data_poses7s + 7 * (frameblend[blends].subframe * model->num_bones + i);
-				float lerp = frameblend[blends].lerp,
-					tx = pose7s[0], ty = pose7s[1], tz = pose7s[2],
-					qx = pose7s[3], qy = pose7s[4], qz = pose7s[5], qw = pose7s[6];
-				if(rx*qx + ry*qy + rz*qz + rw*qw < 0) lerp = -lerp;
-				qx *= lerp;
-				qy *= lerp;
-				qz *= lerp;
-				qw *= lerp;
+				const short * RESTRICT blendpose7s = model->data_poses7s + 7 * (frameblend[blends].subframe * model->num_bones + i);
+				float blendlerp = frameblend[blends].lerp,
+					blendtx = blendpose7s[0], blendty = blendpose7s[1], blendtz = blendpose7s[2],
+					qx = blendpose7s[3], qy = blendpose7s[4], qz = blendpose7s[5], qw = blendpose7s[6];
+				if(rx*qx + ry*qy + rz*qz + rw*qw < 0) blendlerp = -blendlerp;
+				qx *= blendlerp;
+				qy *= blendlerp;
+				qz *= blendlerp;
+				qw *= blendlerp;
 				rx += qx;
 				ry += qy;
 				rz += qz;
 				rw += qw;
-				dx += tx*qw + ty*qz - tz*qy;
-				dy += -tx*qz + ty*qw + tz*qx;
-				dz += tx*qy - ty*qx + tz*qw;
-				dw += -tx*qx - ty*qy - tz*qz;
+				dx += blendtx*qw + blendty*qz - blendtz*qy;
+				dy += -blendtx*qz + blendty*qw + blendtz*qx;
+				dz += blendtx*qy - blendty*qx + blendtz*qw;
+				dw += -blendtx*qx - blendty*qy - blendtz*qz;
 			}
 			// generate a matrix from the dual-quaternion, implicitly normalizing it in the process
 			scale = 1.0f / (rx*rx + ry*ry + rz*rz + rw*rw);
@@ -761,7 +761,6 @@ static void Mod_MDLMD2MD3_TraceLine(dp_model_t *model, const frameblend_t *frame
 	float *vertex3f = vertex3fbuf;
 	memset(trace, 0, sizeof(*trace));
 	trace->fraction = 1;
-	trace->realfraction = 1;
 	trace->hitsupercontentsmask = hitsupercontentsmask;
 	if (model->surfmesh.num_vertices > 1024)
 		vertex3f = (float *)Mem_Alloc(tempmempool, model->surfmesh.num_vertices * sizeof(float[3]));
@@ -801,7 +800,6 @@ static void Mod_MDLMD2MD3_TraceBox(dp_model_t *model, const frameblend_t *frameb
 	// box trace, performed as brush trace
 	memset(trace, 0, sizeof(*trace));
 	trace->fraction = 1;
-	trace->realfraction = 1;
 	trace->hitsupercontentsmask = hitsupercontentsmask;
 	if (model->surfmesh.num_vertices > 1024)
 		vertex3f = (float *)Mem_Alloc(tempmempool, model->surfmesh.num_vertices * sizeof(float[3]));
@@ -911,9 +909,7 @@ static void Mod_BuildAliasSkinFromSkinFrame(texture_t *texture, skinframe_t *ski
 	memset(texture, 0, sizeof(*texture));
 	texture->currentframe = texture;
 	//texture->animated = false;
-	texture->numskinframes = 1;
-	texture->skinframerate = 1;
-	texture->skinframes[0] = skinframe;
+	texture->materialshaderpass = texture->shaderpasses[0] = Mod_CreateShaderPass(skinframe);
 	texture->currentskinframe = skinframe;
 	//texture->backgroundnumskinframes = 0;
 	//texture->customblendfunc[0] = 0;
@@ -924,6 +920,7 @@ static void Mod_BuildAliasSkinFromSkinFrame(texture_t *texture, skinframe_t *ski
 	//texture->textureflags = 0;
 
 	texture->basematerialflags = MATERIALFLAG_WALL;
+	texture->basealpha = 1.0f;
 	if (texture->currentskinframe->hasalpha)
 		texture->basematerialflags |= MATERIALFLAG_ALPHA | MATERIALFLAG_BLENDED | MATERIALFLAG_NOSHADOW;
 	texture->currentmaterialflags = texture->basematerialflags;
@@ -993,51 +990,6 @@ void Mod_BuildAliasSkinsFromSkinFiles(texture_t *skin, skinfile_t *skinfile, con
 			Con_DPrintf("--> using default\n");
 		Image_StripImageExtension(shadername, stripbuf, sizeof(stripbuf));
 		Mod_LoadTextureFromQ3Shader(skin, stripbuf, true, true, (r_mipskins.integer ? TEXF_MIPMAP : 0) | TEXF_ALPHA | TEXF_PICMIP | TEXF_COMPRESS);
-	}
-}
-
-void Mod_BuildVertexAlpha(dp_model_t *model, msurface_t *surface)
-{
-	float *vertex_color, *pos;
-	int i;
-
-	// do not build vertex alpha
-	if (!surface->texture || !surface->texture->vegetation)
-		return;
-
-	// get vertex color
-	if (!model->surfmesh.data_lightmapcolor4f)
-	{
-		// allocate it
-		model->surfmesh.data_lightmapcolor4f = (float *)Mem_Alloc(model->mempool, model->surfmesh.num_vertices * sizeof(float) * 4);
-		memset(loadmodel->surfmesh.data_lightmapcolor4f, 1, model->surfmesh.num_vertices * sizeof(float) * 4);
-	}
-	vertex_color = loadmodel->surfmesh.data_lightmapcolor4f + 4 * surface->num_firstvertex;
-
-	// calculate vegetation parms for surface
-	pos = loadmodel->surfmesh.data_vertex3f + 3 * surface->num_firstvertex;
-	for (i = 0; i < surface->num_vertices; i++, pos += 3, vertex_color += 4)
-	{
-#if 1
-		// vortex: currently this is a stub to not get alias models which have no vertex alpha distracted
-		vertex_color[ 3 ] = 0;
-#else
-		float f, f2;
-		// vortex: two 4-bit numbers packed into a single byte
-		// 1) a number of entity which used for randomization, 0 to 16 (we want it null)
-		f = 0;
-		// 2) intensity of vegetation deform effect which is: (<vertex_z> - <mins_z> / <vegetation height>) * <vertex alpha> (1)
-		if (surface->texture->vegetationheight <= 0)
-			f = 0;
-		else
-		{
-			f2 = ((pos[ 2 ] - minz) * 4.0f) / surface->texture->vegetationheight;
-			//Con_Printf("f: %f vs %f\n", pos[ 2 ] - surface->mins[2], surface->texture->vegetationheight, f2);
-			f2 = min(max(0, f2), 3.75f);
-			f += floor(f2 * 4.0f + 0.5f) * 16.0f;
-		}
-		vertex_color[ 3 ] = f / 255.0f;
-#endif
 	}
 }
 
@@ -1395,10 +1347,6 @@ void Mod_IDP0_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		loadmodel->PointSuperContents = Mod_CollisionBIH_PointSuperContents_Mesh;
 	}
 
-	// build vertex alpha
-	if (surface->texture->vegetation)
-		Mod_BuildVertexAlpha(loadmodel, surface);
-
 	// because shaders can do somewhat unexpected things, check for unusual features now
 	for (i = 0;i < loadmodel->num_textures;i++)
 	{
@@ -1670,10 +1618,6 @@ void Mod_IDP2_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		loadmodel->PointSuperContents = Mod_CollisionBIH_PointSuperContents_Mesh;
 	}
 
-	// build vertex alpha
-	if (surface->texture->vegetation)
-		Mod_BuildVertexAlpha(loadmodel, surface);
-
 	// because shaders can do somewhat unexpected things, check for unusual features now
 	for (i = 0;i < loadmodel->num_textures;i++)
 	{
@@ -1694,7 +1638,6 @@ void Mod_IDP3_Load(dp_model_t *mod, void *buffer, void *bufferend)
 	md3mesh_t *pinmesh;
 	md3tag_t *pintag;
 	skinfile_t *skinfiles;
-	qboolean anyvegetation = false;
 
 	pinmodel = (md3modelheader_t *)buffer;
 
@@ -1847,9 +1790,6 @@ void Mod_IDP3_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		Mod_BuildAliasSkinsFromSkinFiles(loadmodel->data_textures + i, skinfiles, pinmesh->name, LittleLong(pinmesh->num_shaders) >= 1 ? ((md3shader_t *)((unsigned char *) pinmesh + LittleLong(pinmesh->lump_shaders)))->name : "");
 
 		Mod_ValidateElements(loadmodel->surfmesh.data_element3i + surface->num_firsttriangle * 3, surface->num_triangles, surface->num_firstvertex, surface->num_vertices, __FILE__, __LINE__);
-
-		if (surface->texture->vegetation)
-			anyvegetation = true;
 	}
 	if (loadmodel->surfmesh.data_element3s)
 		for (i = 0;i < loadmodel->surfmesh.num_triangles*3;i++)
@@ -1872,11 +1812,6 @@ void Mod_IDP3_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		loadmodel->TracePoint = Mod_CollisionBIH_TracePoint_Mesh;
 		loadmodel->PointSuperContents = Mod_CollisionBIH_PointSuperContents_Mesh;
 	}
-
-	// build vertex alpha for surfaces
-	if ( anyvegetation )
-		for (i = 0;i < loadmodel->num_surfaces;i++)
-			Mod_BuildVertexAlpha(loadmodel, loadmodel->data_surfaces + i);
 
 	// because shaders can do somewhat unexpected things, check for unusual features now
 	for (i = 0;i < loadmodel->num_textures;i++)

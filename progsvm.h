@@ -70,7 +70,7 @@ typedef struct prvm_required_field_s
 typedef struct prvm_edict_private_s
 {
 	qboolean free;
-	float freetime;
+	float freetime; // realtime of last change to "free" (i.e. also set on allocation)
 	int mark; // used during leaktest (0 = unref, >0 = referenced); special values during server physics:
 #define PRVM_EDICT_MARK_WAIT_FOR_SETORIGIN -1
 #define PRVM_EDICT_MARK_SETORIGIN_CAUGHT -2
@@ -537,9 +537,10 @@ prvm_stringbuffer_t;
 typedef struct prvm_prog_s
 {
 	double				starttime; // system time when PRVM_Prog_Load was called
+	double				inittime; // system time when QC initialization code finished (any entity created before is not a leak)
 	double				profiletime; // system time when last PRVM_CallProfile was called (or PRVM_Prog_Load initially)
-	unsigned int		id; // increasing unique id of progs instance
 	mfunction_t			*functions;
+	int				functions_covered;
 	char				*strings;
 	int					stringssize;
 	ddef_t				*fielddefs;
@@ -568,8 +569,13 @@ typedef struct prvm_prog_s
 	int					numglobals;
 
 	int					*statement_linenums; // NULL if not available
+	int					*statement_columnnums; // NULL if not available
 
 	double				*statement_profile; // only incremented if prvm_statementprofiling is on
+	int				statements_covered;
+	double				*explicit_profile; // only incremented if prvm_statementprofiling is on
+	int				explicit_covered;
+	int				numexplicitcoveragestatements;
 
 	union {
 		prvm_vec_t *fp;
@@ -682,6 +688,8 @@ typedef struct prvm_prog_s
 
 	// printed together with backtraces
 	const char *statestring;
+
+	struct animatemodel_cache *animatemodel_cache;
 
 //	prvm_builtin_mem_t  *mem_list;
 
@@ -896,5 +904,7 @@ void VM_GenerateFrameGroupBlend(prvm_prog_t *prog, framegroupblend_t *framegroup
 void VM_FrameBlendFromFrameGroupBlend(frameblend_t *frameblend, const framegroupblend_t *framegroupblend, const dp_model_t *model, double curtime);
 void VM_UpdateEdictSkeleton(prvm_prog_t *prog, prvm_edict_t *ed, const dp_model_t *edmodel, const frameblend_t *frameblend);
 void VM_RemoveEdictSkeleton(prvm_prog_t *prog, prvm_edict_t *ed);
+
+void PRVM_ExplicitCoverageEvent(prvm_prog_t *prog, mfunction_t *func, int statement);
 
 #endif

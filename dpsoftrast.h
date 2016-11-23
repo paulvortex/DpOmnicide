@@ -139,6 +139,14 @@ typedef enum glsl_attrib_e
 }
 glsl_attrib;
 
+typedef enum shaderlanguage_e
+{
+	SHADERLANGUAGE_GLSL,
+	SHADERLANGUAGE_HLSL,
+	SHADERLANGUAGE_COUNT
+}
+shaderlanguage_t;
+
 // this enum selects which of the glslshadermodeinfo entries should be used
 typedef enum shadermode_e
 {
@@ -199,9 +207,10 @@ typedef enum shaderpermutation_e
 	SHADERPERMUTATION_DEPTHRGB = 1<<25, ///< read/write depth values in RGB color coded format for older hardware without depth samplers
 	SHADERPERMUTATION_ALPHAGEN_VERTEX = 1<<26, ///< alphaGen vertex
 	SHADERPERMUTATION_SKELETAL = 1<<27, ///< (skeletal models) use skeletal matrices to deform vertices (gpu-skinning)
-	SHADERPERMUTATION_SELFSHADOWING = 1<<28, ///< apply self shadowing during lighting using heightmap and displacement mapping
-	SHADERPERMUTATION_VEGETATION = 1<<29, ///< apply vegetation procedural animation and shading
-	SHADERPERMUTATION_COUNT = 30 ///< size of shaderpermutationinfo array
+	SHADERPERMUTATION_OCCLUDE = 1<<28, ///< use occlusion buffer for corona
+	SHADERPERMUTATION_SELFSHADOWING = 1<<29, ///< apply self shadowing during lighting using heightmap and displacement mapping
+	SHADERPERMUTATION_VEGETATION = 1<<30, ///< apply vegetation procedural animation and shading
+	SHADERPERMUTATION_COUNT = 31 ///< size of shaderpermutationinfo array
 }
 shaderpermutation_t;
 

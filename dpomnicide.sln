@@ -1,13 +1,15 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 10.00
 # Visual Studio 2008
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "darkplaces-sdl", "darkplaces-sdl.vcproj", "{7470C8B3-FCA7-42D3-9909-5F9E735C7C51}"
-EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "darkplaces-dedicated", "darkplaces-dedicated.vcproj", "{389AE334-D907-4069-90B3-F0551B3EFDE9}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "darkplaces-sdl", "darkplaces-sdl.vcproj", "{7470C8B3-FCA7-42D3-9909-5F9E735C7C51}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "darkplaces-sdl-dev", "darkplaces-sdl-dev.vcproj", "{56DC45BA-7945-4E75-A3D2-4F2DC0C94562}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "darkplaces-sdl-recast", "darkplaces-sdl-recast.vcproj", "{03CCFEEF-306D-4AD3-B149-8F286CDA5D8A}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "darkplaces-sdl2", "darkplaces-sdl2.vcproj", "{7470C8B3-FCA7-42D3-9909-5F9E735C7C81}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "darkplaces-sdl2-dev", "darkplaces-sdl2-dev.vcproj", "{56DC45BA-7945-4E75-A3D2-4F2DC0C94592}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,22 +17,26 @@ Global
 		Release|Win32 = Release|Win32
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{7470C8B3-FCA7-42D3-9909-5F9E735C7C51}.Debug|Win32.ActiveCfg = Debug|Win32
-		{7470C8B3-FCA7-42D3-9909-5F9E735C7C51}.Debug|Win32.Build.0 = Debug|Win32
-		{7470C8B3-FCA7-42D3-9909-5F9E735C7C51}.Release|Win32.ActiveCfg = Release|Win32
-		{7470C8B3-FCA7-42D3-9909-5F9E735C7C51}.Release|Win32.Build.0 = Release|Win32
 		{389AE334-D907-4069-90B3-F0551B3EFDE9}.Debug|Win32.ActiveCfg = Debug|Win32
 		{389AE334-D907-4069-90B3-F0551B3EFDE9}.Debug|Win32.Build.0 = Debug|Win32
 		{389AE334-D907-4069-90B3-F0551B3EFDE9}.Release|Win32.ActiveCfg = Release|Win32
 		{389AE334-D907-4069-90B3-F0551B3EFDE9}.Release|Win32.Build.0 = Release|Win32
+		{7470C8B3-FCA7-42D3-9909-5F9E735C7C51}.Debug|Win32.ActiveCfg = Debug|Win32
+		{7470C8B3-FCA7-42D3-9909-5F9E735C7C51}.Debug|Win32.Build.0 = Debug|Win32
+		{7470C8B3-FCA7-42D3-9909-5F9E735C7C51}.Release|Win32.ActiveCfg = Release|Win32
+		{7470C8B3-FCA7-42D3-9909-5F9E735C7C51}.Release|Win32.Build.0 = Release|Win32
 		{56DC45BA-7945-4E75-A3D2-4F2DC0C94562}.Debug|Win32.ActiveCfg = Debug|Win32
 		{56DC45BA-7945-4E75-A3D2-4F2DC0C94562}.Debug|Win32.Build.0 = Debug|Win32
 		{56DC45BA-7945-4E75-A3D2-4F2DC0C94562}.Release|Win32.ActiveCfg = Release|Win32
 		{56DC45BA-7945-4E75-A3D2-4F2DC0C94562}.Release|Win32.Build.0 = Release|Win32
-		{03CCFEEF-306D-4AD3-B149-8F286CDA5D8A}.Debug|Win32.ActiveCfg = Debug|Win32
-		{03CCFEEF-306D-4AD3-B149-8F286CDA5D8A}.Debug|Win32.Build.0 = Debug|Win32
-		{03CCFEEF-306D-4AD3-B149-8F286CDA5D8A}.Release|Win32.ActiveCfg = Release|Win32
-		{03CCFEEF-306D-4AD3-B149-8F286CDA5D8A}.Release|Win32.Build.0 = Release|Win32
+		{7470C8B3-FCA7-42D3-9909-5F9E735C7C81}.Debug|Win32.ActiveCfg = Debug|Win32
+		{7470C8B3-FCA7-42D3-9909-5F9E735C7C81}.Debug|Win32.Build.0 = Debug|Win32
+		{7470C8B3-FCA7-42D3-9909-5F9E735C7C81}.Release|Win32.ActiveCfg = Release|Win32
+		{7470C8B3-FCA7-42D3-9909-5F9E735C7C81}.Release|Win32.Build.0 = Release|Win32
+		{56DC45BA-7945-4E75-A3D2-4F2DC0C94592}.Debug|Win32.ActiveCfg = Debug|Win32
+		{56DC45BA-7945-4E75-A3D2-4F2DC0C94592}.Debug|Win32.Build.0 = Debug|Win32
+		{56DC45BA-7945-4E75-A3D2-4F2DC0C94592}.Release|Win32.ActiveCfg = Release|Win32
+		{56DC45BA-7945-4E75-A3D2-4F2DC0C94592}.Release|Win32.Build.0 = Release|Win32	
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

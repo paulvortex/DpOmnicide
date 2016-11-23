@@ -68,7 +68,7 @@ typedef struct skinframe_s
 	// mark and sweep garbage collection, this value is updated to a new value
 	// on each level change for the used skinframes, if some are not used they
 	// are freed
-	int loadsequence;
+	unsigned int loadsequence;
 	// indicates whether this texture has transparent pixels
 	qboolean hasalpha;
 	// average texture color, if applicable
@@ -146,10 +146,10 @@ typedef struct surfmesh_s
 	int num_triangles; // number of triangles in the mesh
 	int *data_element3i; // int[tris*3] triangles of the mesh, 3 indices into vertex arrays for each
 	r_meshbuffer_t *data_element3i_indexbuffer;
-	size_t data_element3i_bufferoffset;
+	int data_element3i_bufferoffset;
 	unsigned short *data_element3s; // unsigned short[tris*3] triangles of the mesh in unsigned short format (NULL if num_vertices > 65536)
 	r_meshbuffer_t *data_element3s_indexbuffer;
-	size_t data_element3s_bufferoffset;
+	int data_element3s_bufferoffset;
 	int *data_neighbor3i; // int[tris*3] neighboring triangle on each edge (-1 if none)
 	// vertex data in system memory
 	int num_vertices; // number of vertices in the mesh
@@ -263,7 +263,7 @@ shadowmesh_t;
 #define TEXTURE_MAXFRAMES 64
 #define Q3WAVEPARMS 4
 #define Q3DEFORM_MAXPARMS 3
-#define Q3SHADER_MAXLAYERS 2 // FIXME support more than that (currently only two are used, so why keep more in RAM?)
+#define Q3SHADER_MAXLAYERS 8
 #define Q3RGBGEN_MAXPARMS 3
 #define Q3ALPHAGEN_MAXPARMS 1
 #define Q3TCGEN_MAXPARMS 6
@@ -453,7 +453,6 @@ typedef struct q3shaderinfo_s
 	qboolean lighting;
 	qboolean vertexalpha;
 	qboolean textureblendalpha;
-	int primarylayer, backgroundlayer;
 	q3shaderinfo_layer_t layers[Q3SHADER_MAXLAYERS];
 	char skyboxname[Q3PATHLENGTH];
 	q3shaderinfo_deform_t deforms[Q3MAXDEFORMS];
@@ -533,6 +532,20 @@ typedef struct q3shaderinfo_s
 }
 q3shaderinfo_t;
 
+typedef struct texture_shaderpass_s
+{
+	qboolean alphatest; // FIXME: handle alphafunc properly
+	float framerate;
+	int numframes;
+	skinframe_t *skinframes[TEXTURE_MAXFRAMES];
+	int blendfunc[2];
+	q3shaderinfo_layer_rgbgen_t rgbgen;
+	q3shaderinfo_layer_alphagen_t alphagen;
+	q3shaderinfo_layer_tcgen_t tcgen;
+	q3shaderinfo_layer_tcmod_t tcmods[Q3MAXTCMODS];
+}
+texture_shaderpass_t;
+
 typedef enum texturelayertype_e
 {
 	TEXTURELAYERTYPE_INVALID,
@@ -568,36 +581,32 @@ typedef struct texture_s
 	int basematerialflags;
 	// current material flags (updated each bmodel render)
 	int currentmaterialflags;
+	// base material alpha (used for Q2 materials)
+	float basealpha;
 
 	// PolygonOffset values for rendering this material
 	// (these are added to the r_refdef values and submodel values)
 	float biaspolygonfactor;
 	float biaspolygonoffset;
 
-	// textures to use when rendering this material
+	// textures to use when rendering this material (derived from materialshaderpass)
 	skinframe_t *currentskinframe;
-	int numskinframes;
-	float skinframerate;
-	skinframe_t *skinframes[TEXTURE_MAXFRAMES];
-	// background layer (for terrain texture blending)
+	// textures to use for terrain texture blending (derived from backgroundshaderpass)
 	skinframe_t *backgroundcurrentskinframe;
-	int backgroundnumskinframes;
-	float backgroundskinframerate;
-	skinframe_t *backgroundskinframes[TEXTURE_MAXFRAMES];
 
 	// total frames in sequence and alternate sequence
 	int anim_total[2];
 	// direct pointers to each of the frames in the sequences
 	// (indexed as [alternate][frame])
 	struct texture_s *anim_frames[2][10];
-	// set if animated or there is an alternate frame set
-	// (this is an optimization in the renderer)
+	// 1 = q1bsp animation with anim_total[0] >= 2 (animated) or anim_total[1] >= 1 (alternate frame set)
+	// 2 = q2bsp animation with anim_total[0] >= 2 (uses self.frame)
 	int animated;
 
 	// renderer checks if this texture needs updating...
 	int update_lastrenderframe;
 	void *update_lastrenderentity;
-	// the current alpha of this texture (may be affected by r_wateralpha)
+	// the current alpha of this texture (may be affected by r_wateralpha, also basealpha, and ent->alpha)
 	float currentalpha;
 	// the current texture frame in animation
 	struct texture_s *currentframe;
@@ -606,12 +615,14 @@ typedef struct texture_s
 	matrix4x4_t currentbackgroundtexmatrix;
 
 	// various q3 shader features
-	q3shaderinfo_layer_rgbgen_t rgbgen;
-	q3shaderinfo_layer_alphagen_t alphagen;
-	q3shaderinfo_layer_tcgen_t tcgen;
-	q3shaderinfo_layer_tcmod_t tcmods[Q3MAXTCMODS];
-	q3shaderinfo_layer_tcmod_t backgroundtcmods[Q3MAXTCMODS];
 	q3shaderinfo_deform_t deforms[Q3MAXDEFORMS];
+	texture_shaderpass_t *shaderpasses[Q3SHADER_MAXLAYERS]; // all shader passes in one array
+	texture_shaderpass_t *materialshaderpass; // equal to one of shaderpasses[] or NULL
+	texture_shaderpass_t *backgroundshaderpass; // equal to one of shaderpasses[] or NULL
+	unsigned char startpreshaderpass; // range within shaderpasses[]
+	unsigned char endpreshaderpass; // number of preshaderpasses
+	unsigned char startpostshaderpass; // range within shaderpasses[]
+	unsigned char endpostshaderpass; // number of postshaderpasses
 
 	qboolean colormapping;
 	rtexture_t *basetexture; // original texture without pants/shirt/glow
@@ -647,6 +658,13 @@ typedef struct texture_s
 	int surfaceflags;
 	int supercontents;
 	int textureflags;
+
+	// q2bsp
+	// we have to load the texture multiple times when Q2SURF_ flags differ,
+	// though it still shares the skinframe
+	int q2flags;
+	int q2value;
+	int q2contents;
 
 	// reflection
 	float reflectmin; // when refraction is used, minimum amount of reflection (when looking straight down)
@@ -701,9 +719,13 @@ typedef struct texture_s
 
 typedef struct mtexinfo_s
 {
-	float vecs[2][4];
-	texture_t *texture;
-	int flags;
+	float		vecs[2][4];		// [s/t][xyz offset]
+	int			textureindex;
+	int			q1flags;
+	int			q2flags;			// miptex flags + overrides
+	int			q2value;			// light emission, etc
+	char		q2texture[32];	// texture name (textures/*.wal)
+	int			q2nexttexinfo;	// for animations, -1 = end of chain
 }
 mtexinfo_t;
 
@@ -804,6 +826,12 @@ typedef struct model_brush_s
 	qboolean isbsp2rmqe;
 	// true if this model is a BSP2 .bsp file (expanded 32bit bsp format for DarkPlaces, others?)
 	qboolean isbsp2;
+	// true if this model is a Quake2 .bsp file (IBSP38)
+	qboolean isq2bsp;
+	// true if this model is a Quake3 .bsp file (IBSP46)
+	qboolean isq3bsp;
+	// true if this model is a Quake1/Quake2 .bsp file where skymasking capability exists
+	qboolean skymasking;
 	// string of entity definitions (.map format)
 	char *entities;
 
@@ -937,12 +965,11 @@ typedef struct model_brushq1_s
 }
 model_brushq1_t;
 
-/* MSVC can't compile empty structs, so this is commented out for now
 typedef struct model_brushq2_s
 {
+	int dummy; // MSVC can't handle an empty struct
 }
 model_brushq2_t;
-*/
 
 typedef struct model_brushq3_s
 {
@@ -1125,9 +1152,7 @@ typedef struct model_s
 	model_sprite_t	sprite;
 	model_brush_t	brush;
 	model_brushq1_t	brushq1;
-	/* MSVC can't handle an empty struct, so this is commented out for now
 	model_brushq2_t	brushq2;
-	*/
 	model_brushq3_t	brushq3;
 	// flags this model for offseting sounds to the model center (used by brush models)
 	int soundfromcenter;
@@ -1192,6 +1217,8 @@ void Mod_FreeQ3Shaders(void);
 void Mod_LoadQ3Shaders(void);
 q3shaderinfo_t *Mod_LookupQ3Shader(const char *name);
 qboolean Mod_LoadTextureFromQ3Shader(texture_t *texture, const char *name, qboolean warnmissing, qboolean fallback, int defaulttexflags);
+texture_shaderpass_t *Mod_CreateShaderPass(skinframe_t *skinframe);
+texture_shaderpass_t *Mod_CreateShaderPassFromQ3ShaderLayer(q3shaderinfo_layer_t *layer, int layerindex, int texflags, const char *texturename);
 
 extern cvar_t r_mipskins;
 extern cvar_t r_mipnormalmaps;
@@ -1236,7 +1263,7 @@ typedef struct mod_alloclightmap_state_s
 }
 mod_alloclightmap_state_t;
 
-void Mod_AllocLightmap_Init(mod_alloclightmap_state_t *state, int width, int height);
+void Mod_AllocLightmap_Init(mod_alloclightmap_state_t *state, mempool_t *mempool, int width, int height);
 void Mod_AllocLightmap_Free(mod_alloclightmap_state_t *state);
 void Mod_AllocLightmap_Reset(mod_alloclightmap_state_t *state);
 qboolean Mod_AllocLightmap_Block(mod_alloclightmap_state_t *state, int blockwidth, int blockheight, int *outx, int *outy);
@@ -1246,6 +1273,9 @@ void Mod_BrushInit(void);
 // used for talking to the QuakeC mainly
 int Mod_Q1BSP_NativeContentsFromSuperContents(struct model_s *model, int supercontents);
 int Mod_Q1BSP_SuperContentsFromNativeContents(struct model_s *model, int nativecontents);
+// used for loading wal files in Mod_LoadTextureFromQ3Shader
+int Mod_Q2BSP_SuperContentsFromNativeContents(dp_model_t *model, int nativecontents);
+int Mod_Q2BSP_NativeContentsFromSuperContents(dp_model_t *model, int supercontents);
 
 // a lot of model formats use the Q1BSP code, so here are the prototypes...
 struct entity_render_s;
@@ -1268,6 +1298,8 @@ void Mod_CollisionBIH_TraceLine(dp_model_t *model, const struct frameblend_s *fr
 void Mod_CollisionBIH_TraceBox(dp_model_t *model, const struct frameblend_s *frameblend, const skeleton_t *skeleton, struct trace_s *trace, const vec3_t start, const vec3_t boxmins, const vec3_t boxmaxs, const vec3_t end, int hitsupercontentsmask);
 void Mod_CollisionBIH_TraceBrush(dp_model_t *model, const struct frameblend_s *frameblend, const skeleton_t *skeleton, struct trace_s *trace, struct colbrushf_s *start, struct colbrushf_s *end, int hitsupercontentsmask);
 void Mod_CollisionBIH_TracePoint_Mesh(dp_model_t *model, const struct frameblend_s *frameblend, const skeleton_t *skeleton, struct trace_s *trace, const vec3_t start, int hitsupercontentsmask);
+qboolean Mod_CollisionBIH_TraceLineOfSight(struct model_s *model, const vec3_t start, const vec3_t end);
+int Mod_CollisionBIH_PointSuperContents(struct model_s *model, int frame, const vec3_t point);
 int Mod_CollisionBIH_PointSuperContents_Mesh(struct model_s *model, int frame, const vec3_t point);
 bih_t *Mod_MakeCollisionBIH(dp_model_t *model, qboolean userendersurfaces, bih_t *out);
 

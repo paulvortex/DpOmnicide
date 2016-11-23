@@ -293,6 +293,7 @@ typedef enum gamemode_e
 	GAME_STEELSTORM, // added by motorsep
 	GAME_STEELSTORM2, // added by motorsep
 	GAME_SSAMMO, // added by motorsep
+	GAME_STEELSTORMREVENANTS, // added by motorsep 07/19/2015
 	GAME_TOMESOFMEPHISTOPHELES, // added by motorsep
 	GAME_STRAPBOMB, // added by motorsep for Urre
 	GAME_MOONHELM,
@@ -382,6 +383,8 @@ void FindFraction(double val, int *num, int *denom, int denomMax);
 char **XPM_DecodeString(const char *in);
 
 size_t base64_encode(unsigned char *buf, size_t buflen, size_t outbuflen);
+
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
 #endif
 

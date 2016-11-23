@@ -38,10 +38,59 @@ extern cvar_t gl_ext_separatestencil;
 extern cvar_t gl_ext_stenciltwoside;
 
 // used by shader for bouncegrid feature
-extern rtexture_t *r_shadow_bouncegridtexture;
-extern matrix4x4_t r_shadow_bouncegridmatrix;
-extern vec_t r_shadow_bouncegridintensity;
-extern qboolean r_shadow_bouncegriddirectional;
+typedef struct r_shadow_bouncegrid_settings_s
+{
+	qboolean staticmode;
+	qboolean bounceanglediffuse;
+	qboolean directionalshading;
+	qboolean includedirectlighting;
+	qboolean blur;
+	int floatcolors;
+	float dlightparticlemultiplier;
+	qboolean hitmodels;
+	float lightradiusscale;
+	int maxbounce;
+	int lightpathsize;
+	float particlebounceintensity;
+	float particleintensity;
+	int maxphotons;
+	float energyperphoton;
+	float spacing[3];
+	int stablerandom;
+}
+r_shadow_bouncegrid_settings_t;
+
+typedef struct r_shadow_bouncegrid_state_s
+{
+	r_shadow_bouncegrid_settings_t settings;
+	qboolean capable;
+	qboolean allowdirectionalshading;
+	qboolean directional; // copied from settings.directionalshading after createtexture is decided
+	qboolean createtexture; // set to true to recreate the texture rather than updating it - happens when size changes or directional changes
+	rtexture_t *texture;
+	matrix4x4_t matrix;
+	vec_t intensity;
+	double lastupdatetime;
+	int resolution[3];
+	int numpixels;
+	int pixelbands;
+	int pixelsperband;
+	int bytesperband;
+	float spacing[3];
+	float ispacing[3];
+	vec3_t mins;
+	vec3_t maxs;
+	vec3_t size;
+	int maxsplatpaths;
+
+	// per-frame data that is very temporary
+	int numsplatpaths;
+	struct r_shadow_bouncegrid_splatpath_s *splatpaths;
+	float *highpixels;
+}
+r_shadow_bouncegrid_state_t;
+
+extern r_shadow_bouncegrid_state_t r_shadow_bouncegrid_state;
 
 void R_Shadow_Init(void);
 qboolean R_Shadow_ShadowMappingEnabled(void);
@@ -56,8 +105,8 @@ void R_Shadow_RenderMode_Begin(void);
 void R_Shadow_RenderMode_ActiveLight(const rtlight_t *rtlight);
 void R_Shadow_RenderMode_Reset(void);
 void R_Shadow_RenderMode_StencilShadowVolumes(qboolean zpass);
-void R_Shadow_RenderMode_Lighting(qboolean stenciltest, qboolean transparent, qboolean shadowmapping);
-void R_Shadow_RenderMode_DrawDeferredLight(qboolean stenciltest, qboolean shadowmapping);
+void R_Shadow_RenderMode_Lighting(qboolean stenciltest, qboolean transparent, qboolean shadowmapping, qboolean noselfshadowpass);
+void R_Shadow_RenderMode_DrawDeferredLight(qboolean shadowmapping);
 void R_Shadow_RenderMode_VisibleShadowVolumes(void);
 void R_Shadow_RenderMode_VisibleLighting(qboolean stenciltest, qboolean transparent);
 void R_Shadow_RenderMode_End(void);
@@ -79,6 +128,7 @@ void R_RTLight_Compile(rtlight_t *rtlight);
 void R_RTLight_Uncompile(rtlight_t *rtlight);
 
 void R_Shadow_PrepareLights(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture);
+void R_Shadow_ClearShadowMapTexture(void);
 void R_Shadow_DrawPrepass(void);
 void R_Shadow_DrawLights(void);
 void R_Shadow_DrawCoronas(void);
@@ -104,7 +154,7 @@ void R_Shadow_PrepareModelShadows(void);
 void R_LightPoint(float *color, const vec3_t p, const int flags);
 void R_CompleteLightPoint(float *ambientcolor, float *diffusecolor, float *diffusenormal, const vec3_t p, const int flags);
 
-void R_DrawModelShadowMaps(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture);
-void R_DrawModelShadows(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture);
+void R_Shadow_DrawShadowMaps(void);
+void R_Shadow_DrawModelShadows(void);
 
 #endif

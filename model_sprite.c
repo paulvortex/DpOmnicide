@@ -77,6 +77,7 @@ static void Mod_SpriteSetupTexture(texture_t *texture, skinframe_t *skinframe, q
 	texture->specularscalemod = 1;
 	texture->specularpowermod = 1;
 	texture->basematerialflags = MATERIALFLAG_WALL;
+	texture->basealpha = 1.0f;
 	if (fullbright)
 		texture->basematerialflags |= MATERIALFLAG_FULLBRIGHT;
 	if (additive)
@@ -84,8 +85,8 @@ static void Mod_SpriteSetupTexture(texture_t *texture, skinframe_t *skinframe, q
 	else if (skinframe->hasalpha)
 		texture->basematerialflags |= MATERIALFLAG_ALPHA | MATERIALFLAG_BLENDED | MATERIALFLAG_NOSHADOW;
 	texture->currentmaterialflags = texture->basematerialflags;
-	texture->numskinframes = 1;
-	texture->currentskinframe = texture->skinframes[0] = skinframe;
+	texture->materialshaderpass = texture->shaderpasses[0] = Mod_CreateShaderPass(skinframe);
+	texture->currentskinframe = skinframe;
 	texture->surfaceflags = 0;
 	texture->supercontents = SUPERCONTENTS_SOLID;
 	if (!(texture->basematerialflags & MATERIALFLAG_BLENDED))
@@ -605,6 +606,9 @@ void Mod_IDSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		Host_Error("Mod_IDSP_Load: %s has wrong version number (%i). Only %i (quake), %i (HalfLife), %i (sprite32) and %i/%i (BloodOmnicide packed 8/32-bit sprite) supported",
 					loadmodel->name, version, SPRITE_VERSION, SPRITEHL_VERSION, SPRITE32_VERSION, SPRITEPACKED_VERSION, SPRITEPACKED32_VERSION );
 
+	// TODO: Note that isanimated only means whether vertices change due to
+	// the animation. This may happen due to sprframe parameters changing.
+	// Mere texture chanegs OTOH shouldn't require isanimated to be 1.
 	loadmodel->surfmesh.isanimated = loadmodel->numframes > 1 || (loadmodel->animscenes && loadmodel->animscenes[0].framecount > 1);
 }
 
@@ -714,5 +718,8 @@ void Mod_IDS2_Load(dp_model_t *mod, void *buffer, void *bufferend)
 	loadmodel->radius = modelradius;
 	loadmodel->radius2 = modelradius * modelradius;
 
+	// TODO: Note that isanimated only means whether vertices change due to
+	// the animation. This may happen due to sprframe parameters changing.
+	// Mere texture chanegs OTOH shouldn't require isanimated to be 1.
 	loadmodel->surfmesh.isanimated = loadmodel->numframes > 1 || (loadmodel->animscenes && loadmodel->animscenes[0].framecount > 1);
 }
