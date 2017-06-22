@@ -1991,19 +1991,22 @@ static void Host_Spawn_f (void)
 	// in a state where it is expecting the client to correct the angle
 	// and it won't happen if the game was just loaded, so you wind up
 	// with a permanent head tilt
-	if (sv.loadgame)
+	if (gamemode != GAME_BLOODOMNICIDE)
 	{
-		MSG_WriteByte (&host_client->netconnection->message, svc_setangle);
-		MSG_WriteAngle (&host_client->netconnection->message, PRVM_serveredictvector(host_client->edict, v_angle)[0], sv.protocol);
-		MSG_WriteAngle (&host_client->netconnection->message, PRVM_serveredictvector(host_client->edict, v_angle)[1], sv.protocol);
-		MSG_WriteAngle (&host_client->netconnection->message, 0, sv.protocol);
-	}
-	else
-	{
-		MSG_WriteByte (&host_client->netconnection->message, svc_setangle);
-		MSG_WriteAngle (&host_client->netconnection->message, PRVM_serveredictvector(host_client->edict, angles)[0], sv.protocol);
-		MSG_WriteAngle (&host_client->netconnection->message, PRVM_serveredictvector(host_client->edict, angles)[1], sv.protocol);
-		MSG_WriteAngle (&host_client->netconnection->message, 0, sv.protocol);
+		if (sv.loadgame)
+		{
+			MSG_WriteByte (&host_client->netconnection->message, svc_setangle);
+			MSG_WriteAngle (&host_client->netconnection->message, PRVM_serveredictvector(host_client->edict, v_angle)[0], sv.protocol);
+			MSG_WriteAngle (&host_client->netconnection->message, PRVM_serveredictvector(host_client->edict, v_angle)[1], sv.protocol);
+			MSG_WriteAngle (&host_client->netconnection->message, 0, sv.protocol);
+		}
+		else
+		{
+			MSG_WriteByte (&host_client->netconnection->message, svc_setangle);
+			MSG_WriteAngle (&host_client->netconnection->message, PRVM_serveredictvector(host_client->edict, angles)[0], sv.protocol);
+			MSG_WriteAngle (&host_client->netconnection->message, PRVM_serveredictvector(host_client->edict, angles)[1], sv.protocol);
+			MSG_WriteAngle (&host_client->netconnection->message, 0, sv.protocol);
+		}
 	}
 
 	SV_WriteClientdataToMessage (host_client, host_client->edict, &host_client->netconnection->message, stats);

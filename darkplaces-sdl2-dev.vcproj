@@ -120,7 +120,7 @@
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
 				AdditionalIncludeDirectories=".\Dependencies\SDL2\include"
-				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_FILE_OFFSET_BITS=64;__KERNEL_STRICT_NAMES;CONFIG_MENU;CONFIG_CD;CONFIG_VIDEO_CAPTURE;USEODE;JAMVIDEO;DP_DEVELOPER_BUILD"
+				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_FILE_OFFSET_BITS=64;__KERNEL_STRICT_NAMES;CONFIG_MENU;CONFIG_CD;CONFIG_VIDEO_CAPTURE;USEODE;BLOODOMNICIDE;DP_DEVELOPER_BUILD;DP_SDL2"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				FloatingPointModel="2"

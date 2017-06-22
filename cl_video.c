@@ -24,7 +24,7 @@ cvar_t v_glslgamma_video = {CVAR_SAVE, "v_glslgamma_video", "1", "applies GLSL g
 #include "cl_video_libavw.c"
 
 // JAM video decoder used by Blood Omnicide
-#ifdef JAMVIDEO
+#ifdef BLOODOMNICIDE
 #include "cl_video_jamdecode.c"
 #endif
 
@@ -55,7 +55,7 @@ static qboolean OpenStream( clvideo_t * video )
 	if (video->stream)
 		return true;
 
-#ifdef JAMVIDEO
+#ifdef BLOODOMNICIDE
 	video->stream = jam_open( video, video->filename, &errorstring);
 	if (video->stream)
 		return true;

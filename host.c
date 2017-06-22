@@ -85,6 +85,8 @@ cvar_t developer_insane = {0, "developer_insane", "0", "prints huge streams of i
 cvar_t developer_loadfile = {0, "developer_loadfile","0", "prints name and size of every file loaded via the FS_LoadFile function (which is almost everything)"};
 cvar_t developer_loading = {0, "developer_loading","0", "prints information about files as they are loaded or unloaded successfully"};
 cvar_t developer_entityparsing = {0, "developer_entityparsing", "0", "prints detailed network entities information each time a packet is received"};
+cvar_t developer_keys = {0, "developer_keys", "0", "prints info about key events. SDL2 only: a value 100 + x prints info about joystick axis #x, value of 1000 + x prints info about joystick hat x"};
+cvar_t developer_joystick = {0, "developer_joystick", "0", "prints info about joystick events. SDL2 only: a value 100 + x prints info about joystick axis #x, value of 1000 + x prints info about joystick hat x"};
 
 cvar_t timestamps = {CVAR_SAVE, "timestamps", "0", "prints timestamps on console messages"};
 cvar_t timeformat = {CVAR_SAVE, "timeformat", "[%Y-%m-%d %H:%M:%S] ", "time format to use on timestamped console messages"};
@@ -261,6 +263,8 @@ static void Host_InitLocal (void)
 	Cvar_RegisterVariable (&developer_loadfile);
 	Cvar_RegisterVariable (&developer_loading);
 	Cvar_RegisterVariable (&developer_entityparsing);
+	Cvar_RegisterVariable (&developer_keys);
+	Cvar_RegisterVariable (&developer_joystick);
 
 	Cvar_RegisterVariable (&timestamps);
 	Cvar_RegisterVariable (&timeformat);

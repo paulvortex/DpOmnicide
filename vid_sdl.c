@@ -734,14 +734,46 @@ void VID_BuildJoyState(vid_joystate_t *joystate)
 	if (vid_sdljoystick)
 	{
 		SDL_Joystick *joy = vid_sdljoystick;
-		int j;
-		int numaxes;
-		int numbuttons;
-		numaxes = SDL_JoystickNumAxes(joy);
-		for (j = 0;j < numaxes;j++)
+		// get guid/name/instance
+		SDL_JoystickGetGUIDString(SDL_JoystickGetGUID(joy), joystate->guid, MAXJOYNAME);
+		strcpy_s(joystate->name, MAXJOYNAME, SDL_JoystickName(joy));
+		joystate->instanceid = SDL_JoystickInstanceID(joy);
+		// GUID-based identification
+		char find[MAXJOYNAME];
+		strcpy_s(find, MAXJOYNAME, "'");
+		strcat_s(find, MAXJOYNAME, joystate->guid);
+		strcat_s(find, MAXJOYNAME, "'");
+		if (joy_x360_guids.string && strstr(joy_x360_guids.string, find))
+			joystate->detected = JOYMODEL_X360;
+		if (joy_ds_guids.string && strstr(joy_ds_guids.string, find))
+			joystate->detected = JOYMODEL_DS;
+		if (joy_model.integer == -1)
+			joystate->model = joystate->detected;
+		// read axes/buttons/balls/hats state
+		int j, maxbuttons;
+		unsigned char h;
+		joystate->numaxes = SDL_JoystickNumAxes(joy);
+		for (j = 0;j < joystate->numaxes && j < MAXJOYAXIS;j++)
 			joystate->axis[j] = SDL_JoystickGetAxis(joy, j) * (1.0f / 32767.0f);
-		numbuttons = SDL_JoystickNumButtons(joy);
-		for (j = 0;j < numbuttons;j++)
+		joystate->numhats = SDL_JoystickNumHats(joy);
+		for (j = 0;j < joystate->numhats && j < MAXJOYHAT;j++)
+		{
+			h = SDL_JoystickGetHat(joy, j);
+			     if (h == SDL_HAT_CENTERED) joystate->hat[j] = JOYHAT_CENTERED;
+			else if (h == SDL_HAT_UP)       joystate->hat[j] = JOYHAT_UP;
+			else if (h == SDL_HAT_RIGHT)    joystate->hat[j] = JOYHAT_RIGHT;
+			else if (h == SDL_HAT_DOWN)     joystate->hat[j] = JOYHAT_DOWN;
+			else if (h == SDL_HAT_LEFT)     joystate->hat[j] = JOYHAT_LEFT;
+			else if (h == SDL_HAT_RIGHTUP)  joystate->hat[j] = JOYHAT_RIGHTUP;
+			else if (h == SDL_HAT_RIGHTDOWN)joystate->hat[j] = JOYHAT_RIGHTDOWN;
+			else if (h == SDL_HAT_LEFTUP)   joystate->hat[j] = JOYHAT_LEFTUP;
+			else if (h == SDL_HAT_LEFTDOWN) joystate->hat[j] = JOYHAT_LEFTDOWN;
+			else                            joystate->hat[j] = JOYHAT_CENTERED;
+		}
+		joystate->numballs = SDL_JoystickNumBalls(joy);
+		maxbuttons = (joystate->model == JOYMODEL_DS ? JOY_DS_MAXNATURALBUTTON : (joystate->model == JOYMODEL_X360 ? JOY_X360_MAXNATURALBUTTON : MAXJOYBUTTON));
+		joystate->numbuttons = SDL_JoystickNumButtons(joy);
+		for (j = 0;j < joystate->numbuttons && j < maxbuttons;j++)
 			joystate->button[j] = SDL_JoystickGetButton(joy, j);
 	}
 
@@ -1046,7 +1078,7 @@ void IN_Move( void )
 	}
 
 	VID_BuildJoyState(&joystate);
-	VID_ApplyJoyState(&joystate);
+	VID_Shared_ApplyJoyState(&joystate);
 }
 
 /////////////////////
@@ -1067,7 +1099,7 @@ static void sdl_newmap(void)
 }
 #endif
 
-static keynum_t buttonremap[] =
+static keynum_t mousebuttonremap[] =
 {
 	K_MOUSE1,
 	K_MOUSE3,
@@ -1093,6 +1125,26 @@ static keynum_t buttonremap[] =
 	K_MOUSE14,
 	K_MOUSE15,
 	K_MOUSE16,
+};
+
+static keynum_t joybuttonremap[] =
+{
+	K_JOY1,
+	K_JOY2,
+	K_JOY3,
+	K_JOY4,
+	K_JOY5,
+	K_JOY6,
+	K_JOY7,
+	K_JOY8,
+	K_JOY9,
+	K_JOY10,
+	K_JOY11,
+	K_JOY12,
+	K_JOY13,
+	K_JOY14,
+	K_JOY15,
+	K_JOY16,
 };
 
 #if SDL_MAJOR_VERSION == 1
@@ -1137,8 +1189,8 @@ void Sys_SendKeyEvents( void )
 			case SDL_MOUSEBUTTONDOWN:
 			case SDL_MOUSEBUTTONUP:
 				if (!vid_touchscreen.integer)
-				if (event.button.button > 0 && event.button.button <= ARRAY_SIZE(buttonremap))
-					Key_Event( buttonremap[event.button.button - 1], 0, event.button.state == SDL_PRESSED );
+				if (event.button.button > 0 && event.button.button <= ARRAY_SIZE(mousebuttonremap))
+					Key_Event( mousebuttonremap[event.button.button - 1], 0, event.button.state == SDL_PRESSED );
 				break;
 			case SDL_JOYBUTTONDOWN:
 			case SDL_JOYBUTTONUP:
@@ -1210,6 +1262,9 @@ void Sys_SendKeyEvents( void )
 
 #else
 
+#ifdef DP_DEVELOPER_BUILD
+#define DEBUGSDLEVENTS
+#endif
 //#define DEBUGSDLEVENTS
 
 // SDL2
@@ -1227,17 +1282,21 @@ void Sys_SendKeyEvents( void )
 		switch( event.type ) {
 			case SDL_QUIT:
 #ifdef DEBUGSDLEVENTS
-				Con_DPrintf("SDL_Event: SDL_QUIT\n");
+				if (developer_keys.integer)
+					Con_DPrintf("SDL_Event: SDL_QUIT\n");
 #endif
 				Sys_Quit(0);
 				break;
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
 #ifdef DEBUGSDLEVENTS
-				if (event.type == SDL_KEYDOWN)
-					Con_DPrintf("SDL_Event: SDL_KEYDOWN %i\n", event.key.keysym.sym);
-				else
-					Con_DPrintf("SDL_Event: SDL_KEYUP %i\n", event.key.keysym.sym);
+				if (developer_keys.integer)
+				{
+					if (event.type == SDL_KEYDOWN)
+						Con_DPrintf("SDL_Event: SDL_KEYDOWN %i\n", event.key.keysym.sym);
+					else
+						Con_DPrintf("SDL_Event: SDL_KEYUP %i\n", event.key.keysym.sym);
+				}
 #endif
 				keycode = MapKey(event.key.keysym.sym);
 				if (!VID_JoyBlockEmulatedKeys(keycode))
@@ -1246,14 +1305,17 @@ void Sys_SendKeyEvents( void )
 			case SDL_MOUSEBUTTONDOWN:
 			case SDL_MOUSEBUTTONUP:
 #ifdef DEBUGSDLEVENTS
-				if (event.type == SDL_MOUSEBUTTONDOWN)
-					Con_DPrintf("SDL_Event: SDL_MOUSEBUTTONDOWN\n");
-				else
-					Con_DPrintf("SDL_Event: SDL_MOUSEBUTTONUP\n");
+				if (developer_keys.integer)
+				{
+					if (event.type == SDL_MOUSEBUTTONDOWN)
+						Con_DPrintf("SDL_Event: SDL_MOUSEBUTTONDOWN\n");
+					else
+						Con_DPrintf("SDL_Event: SDL_MOUSEBUTTONUP\n");
+				}
 #endif
 				if (!vid_touchscreen.integer)
-				if (event.button.button > 0 && event.button.button <= ARRAY_SIZE(buttonremap))
-					Key_Event( buttonremap[event.button.button - 1], 0, event.button.state == SDL_PRESSED );
+				if (event.button.button > 0 && event.button.button <= ARRAY_SIZE(mousebuttonremap))
+					Key_Event( mousebuttonremap[event.button.button - 1], 0, event.button.state == SDL_PRESSED );
 				break;
 			case SDL_MOUSEWHEEL:
 				// TODO support wheel x direction.
@@ -1270,17 +1332,21 @@ void Sys_SendKeyEvents( void )
 				}
 				break;
 			case SDL_JOYBUTTONDOWN:
+				if (developer_joystick.integer && developer_joystick.integer < 100)
+					Con_DPrintf("SDL_JOYBUTTONDOWN: %i\n", (int)event.jbutton.button);
+				break;
 			case SDL_JOYBUTTONUP:
+				if (developer_joystick.integer && developer_joystick.integer < 100)
+					Con_DPrintf("SDL_JOYBUTTONUP: %i\n", (int)event.jbutton.button);
+				break;
 			case SDL_JOYAXISMOTION:
 			case SDL_JOYBALLMOTION:
 			case SDL_JOYHATMOTION:
-#ifdef DEBUGSDLEVENTS
-				Con_DPrintf("SDL_Event: SDL_JOY*\n");
-#endif
 				break;
 			case SDL_WINDOWEVENT:
 #ifdef DEBUGSDLEVENTS
-				Con_DPrintf("SDL_Event: SDL_WINDOWEVENT %i\n", (int)event.window.event);
+				if (developer_keys.integer)
+					Con_DPrintf("SDL_Event: SDL_WINDOWEVENT %i\n", (int)event.window.event);
 #endif
 				//if (event.window.windowID == window) // how to compare?
 				{
@@ -1294,7 +1360,8 @@ void Sys_SendKeyEvents( void )
 						break;
 					case SDL_WINDOWEVENT_EXPOSED:
 #ifdef DEBUGSDLEVENTS
-						Con_DPrintf("SDL_Event: SDL_WINDOWEVENT_EXPOSED\n");
+						if (developer_keys.integer)
+							Con_DPrintf("SDL_Event: SDL_WINDOWEVENT_EXPOSED\n");
 #endif
 						break;
 					case SDL_WINDOWEVENT_MOVED:
@@ -1349,13 +1416,15 @@ void Sys_SendKeyEvents( void )
 				break;
 			case SDL_TEXTEDITING:
 #ifdef DEBUGSDLEVENTS
-				Con_DPrintf("SDL_Event: SDL_TEXTEDITING - composition = %s, cursor = %d, selection lenght = %d\n", event.edit.text, event.edit.start, event.edit.length);
+				if (developer_keys.integer)
+					Con_DPrintf("SDL_Event: SDL_TEXTEDITING - composition = %s, cursor = %d, selection lenght = %d\n", event.edit.text, event.edit.start, event.edit.length);
 #endif
 				// FIXME!  this is where composition gets supported
 				break;
 			case SDL_TEXTINPUT:
 #ifdef DEBUGSDLEVENTS
-				Con_DPrintf("SDL_Event: SDL_TEXTINPUT - text: %s\n", event.text.text);
+				if (developer_keys.integer)
+					Con_DPrintf("SDL_Event: SDL_TEXTINPUT - text: %s\n", event.text.text);
 #endif
 				// convert utf8 string to char
 				// NOTE: this code is supposed to run even if utf8enable is 0
@@ -1367,7 +1436,8 @@ void Sys_SendKeyEvents( void )
 				break;
 			case SDL_FINGERDOWN:
 #ifdef DEBUGSDLEVENTS
-				Con_DPrintf("SDL_FINGERDOWN for finger %i\n", (int)event.tfinger.fingerId);
+				if (developer_keys.integer)
+					Con_DPrintf("SDL_FINGERDOWN for finger %i\n", (int)event.tfinger.fingerId);
 #endif
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
@@ -1385,7 +1455,8 @@ void Sys_SendKeyEvents( void )
 				break;
 			case SDL_FINGERUP:
 #ifdef DEBUGSDLEVENTS
-				Con_DPrintf("SDL_FINGERUP for finger %i\n", (int)event.tfinger.fingerId);
+				if (developer_keys.integer)
+					Con_DPrintf("SDL_FINGERUP for finger %i\n", (int)event.tfinger.fingerId);
 #endif
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
@@ -1400,7 +1471,8 @@ void Sys_SendKeyEvents( void )
 				break;
 			case SDL_FINGERMOTION:
 #ifdef DEBUGSDLEVENTS
-				Con_DPrintf("SDL_FINGERMOTION for finger %i\n", (int)event.tfinger.fingerId);
+				if (developer_keys.integer)
+					Con_DPrintf("SDL_FINGERMOTION for finger %i\n", (int)event.tfinger.fingerId);
 #endif
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
@@ -1416,7 +1488,8 @@ void Sys_SendKeyEvents( void )
 				break;
 			default:
 #ifdef DEBUGSDLEVENTS
-				Con_DPrintf("Received unrecognized SDL_Event type 0x%x\n", event.type);
+				if (developer_keys.integer)
+					Con_DPrintf("Received unrecognized SDL_Event type 0x%x\n", event.type);
 #endif
 				break;
 		}
@@ -2114,6 +2187,7 @@ void VID_EnableJoystick(qboolean enable)
 				Con_Printf("Joystick %i failed (SDL_JoystickOpen(%i) returned: %s)\n", index, sdlindex, SDL_GetError());
 				sdlindex = -1;
 			}
+			vid_joystate_new = true;
 		}
 	}
 

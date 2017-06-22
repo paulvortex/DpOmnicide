@@ -2111,8 +2111,8 @@ void Mod_LoadQ3Shaders(void)
 						shader.surfaceparms |= Q3SURFACEPARM_AREAPORTAL;
 					else if (!strcasecmp(parameter[1], "botclip"))
 						shader.surfaceparms |= Q3SURFACEPARM_BOTCLIP;
-					else if (!strcasecmp(parameter[1], "monsterclip"))
-						;
+					//else if (!strcasecmp(parameter[1], "monsterclip"))
+					//	;
 					else if (!strcasecmp(parameter[1], "clusterportal"))
 						shader.surfaceparms |= Q3SURFACEPARM_CLUSTERPORTAL;
 					else if (!strcasecmp(parameter[1], "detail"))

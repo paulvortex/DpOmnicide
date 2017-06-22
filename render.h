@@ -607,6 +607,7 @@ extern cvar_t r_shadows_focus;
 extern cvar_t r_shadows_focus2;
 extern cvar_t r_shadows_shadowmapscale;
 extern cvar_t r_shadows_shadowmapbias;
+extern cvar_t r_shadows_shadowmapatlassize;
 extern cvar_t r_shadows_castfromworld;
 extern cvar_t r_transparent_alphatocoverage;
 extern cvar_t r_transparent_sortsurfacesbynearest;

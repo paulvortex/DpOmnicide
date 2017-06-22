@@ -479,6 +479,8 @@ extern cvar_t developer_extra;
 extern cvar_t developer_insane;
 extern cvar_t developer_loadfile;
 extern cvar_t developer_loading;
+extern cvar_t developer_keys;
+extern cvar_t developer_joystick;
 
 extern cvar_t sessionid;
 

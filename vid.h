@@ -157,26 +157,65 @@ extern viddef_t vid;
 extern void (*vid_menudrawfn)(void);
 extern void (*vid_menukeyfn)(int key);
 
+// joystick model
+typedef enum joymodel_s
+{
+	JOYMODEL_GENERIC,   // generic joystick
+	JOYMODEL_X360,      // indicates this joystick is a Microsoft Xbox 360 Controller For Windows
+	JOYMODEL_DS	        // indicates this joystick is a Sony DualShock Controller
+} joymodel_t;
+
+// joystick hat state
+typedef enum joyhatstate_s
+{
+	JOYHAT_CENTERED,
+	JOYHAT_UP,
+	JOYHAT_RIGHT,
+	JOYHAT_DOWN,
+	JOYHAT_LEFT,
+	JOYHAT_RIGHTUP,
+	JOYHAT_RIGHTDOWN,
+	JOYHAT_LEFTUP,
+	JOYHAT_LEFTDOWN
+} joyhatstate_t;
+
+// joystick state
+#define MAXJOYNAME 512 // device name, guid
 #define MAXJOYAXIS 16
-// if this is changed, the corresponding code in vid_shared.c must be updated
-#define MAXJOYBUTTON 36
+#define MAXJOYHAT 4
+#define MAXJOYBUTTON 36 // if this is changed, the corresponding code in vid_shared.c must be updated
+#define JOY_X360_MAXNATURALBUTTON 14 // end of x360 gamepad 'natural' buttons, beginning of emulated buttons
+#define JOY_DS_MAXNATURALBUTTON 16   // end of Sony DualShock gamepad 'natural' buttons, beginning of emulated buttons
 typedef struct vid_joystate_s
 {
+	int numaxes;
+	int numhats;
+	int numbuttons;
+	int numballs;
+	double instanceid;
 	float axis[MAXJOYAXIS]; // -1 to +1
+	joyhatstate_t hat[MAXJOYHAT]; // see joyhatstate_t
 	unsigned char button[MAXJOYBUTTON]; // 0 or 1
-	qboolean is360; // indicates this joystick is a Microsoft Xbox 360 Controller For Windows
+	char name[MAXJOYNAME];
+	char guid[MAXJOYNAME];
+	joymodel_t detected;
+	joymodel_t model; // indicates which model joystick uses
 }
 vid_joystate_t;
 
 extern vid_joystate_t vid_joystate;
+extern bool vid_joystate_new;
 
 extern cvar_t joy_index;
 extern cvar_t joy_enable;
 extern cvar_t joy_detected;
 extern cvar_t joy_active;
+extern cvar_t joy_model;
+extern cvar_t joy_x360_guids;
+extern cvar_t joy_ds_guids;
 
 float VID_JoyState_GetAxis(const vid_joystate_t *joystate, int axis, float sensitivity, float deadzone);
-void VID_ApplyJoyState(vid_joystate_t *joystate);
+void VID_Shared_ApplyJoyState(vid_joystate_t *joystate);
 void VID_BuildJoyState(vid_joystate_t *joystate);
 void VID_Shared_BuildJoyState_Begin(vid_joystate_t *joystate);
 void VID_Shared_BuildJoyState_Finish(vid_joystate_t *joystate);

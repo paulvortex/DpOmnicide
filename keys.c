@@ -516,6 +516,35 @@ static const keyname_t   keynames[] = {
 	{"JOY_LEFT", K_JOY_LEFT},
 	{"JOY_RIGHT", K_JOY_RIGHT},
 
+	{"X360_GUIDE", K_X360_GUIDE},
+
+	{"DS_DPAD_UP", K_DS_DPAD_UP},
+	{"DS_DPAD_DOWN", K_DS_DPAD_DOWN},
+	{"DS_DPAD_LEFT", K_DS_DPAD_LEFT},
+	{"DS_DPAD_RIGHT", K_DS_DPAD_RIGHT},
+	{"DS_SQUARE", K_DS_SQUARE},
+	{"DS_CROSS", K_DS_CROSS},
+	{"DS_CIRCLE", K_DS_CIRCLE},
+	{"DS_TRIANGLE", K_DS_TRIANGLE},
+	{"DS_L1", K_DS_L1},
+	{"DS_R1", K_DS_R1},
+	{"DS_L2", K_DS_L2},
+	{"DS_R2", K_DS_R2},
+	{"DS_SHARE", K_DS_SHARE},
+	{"DS_OPTIONS", K_DS_OPTIONS},
+	{"DS_LEFT_STICK", K_DS_LEFT_STICK},
+	{"DS_RIGHT_STICK", K_DS_RIGHT_STICK},
+	{"DS_PS", K_DS_PS},
+	{"DS_TOUCHPAD", K_DS_TOUCHPAD},
+	{"DS_LEFT_STICK_UP", K_DS_LEFT_STICK_UP},
+	{"DS_LEFT_STICK_DOWN", K_DS_LEFT_STICK_DOWN},
+	{"DS_LEFT_STICK_LEFT", K_DS_LEFT_STICK_LEFT},
+	{"DS_LEFT_STICK_RIGHT", K_DS_LEFT_STICK_RIGHT},
+	{"DS_RIGHT_STICK_UP", K_DS_RIGHT_STICK_UP},
+	{"DS_RIGHT_STICK_DOWN", K_DS_RIGHT_STICK_DOWN},
+	{"DS_RIGHT_STICK_LEFT", K_DS_RIGHT_STICK_LEFT},
+	{"DS_RIGHT_STICK_RIGHT", K_DS_RIGHT_STICK_RIGHT},
+
 	{"SEMICOLON", ';'},			// because a raw semicolon separates commands
 	{"TILDE", '~'},
 	{"BACKQUOTE", '`'},
@@ -1760,7 +1789,7 @@ Key_Event (int key, int ascii, qboolean down)
 	if (!bind)
 		bind = keybindings[key_bmap2][key];
 
-	if (developer_insane.integer)
+	if (developer_keys.integer)
 		Con_DPrintf("Key_Event(%i, '%c', %s) keydown %i bind \"%s\"\n", key, ascii ? ascii : '?', down ? "down" : "up", keydown[key], bind ? bind : "");
 
 	if(key_consoleactive)

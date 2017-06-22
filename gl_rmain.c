@@ -143,6 +143,7 @@ cvar_t r_shadows_focus = {CVAR_SAVE, "r_shadows_focus", "0 0 0", "offset the sha
 cvar_t r_shadows_focus2 = {CVAR_SAVE, "r_shadows_focus2", "0 0 0", "offset the shadowed area focus in world space axes"};
 cvar_t r_shadows_shadowmapscale = {CVAR_SAVE, "r_shadows_shadowmapscale", "1", "increases shadowmap quality (multiply global shadowmap precision) for fake shadows. Needs shadowmapping ON."};
 cvar_t r_shadows_shadowmapbias = {CVAR_SAVE, "r_shadows_shadowmapbias", "-1", "sets shadowmap bias for fake shadows. -1 sets the value of r_shadow_shadowmapping_bias. Needs shadowmapping ON."};
+cvar_t r_shadows_shadowmapatlassize = {CVAR_SAVE, "r_shadows_shadowmapatlassize", "2", "sets the size of shadowmap chunk in shadowmap atlas, 1 is 1/8 of atlas, 8 is full atlas (no space left for dynamic lights)"};
 cvar_t r_q1bsp_skymasking = {0, "r_q1bsp_skymasking", "1", "allows sky polygons in quake1 maps to obscure other geometry"};
 cvar_t r_polygonoffset_submodel_factor = {0, "r_polygonoffset_submodel_factor", "0", "biases depth values of world submodels such as doors, to prevent z-fighting artifacts in Quake maps"};
 cvar_t r_polygonoffset_submodel_offset = {0, "r_polygonoffset_submodel_offset", "14", "biases depth values of world submodels such as doors, to prevent z-fighting artifacts in Quake maps"};
@@ -697,6 +698,16 @@ typedef struct shaderpermutationinfo_s
 	const char *name;
 }
 shaderpermutationinfo_t;
+
+// VorteX: shadermode-dependent permulations
+typedef struct shaderpermutationinfo2_s
+{
+	unsigned int mode;
+	unsigned int flag;
+	const char *pretext;
+	const char *name;
+}
+shaderpermutationinfo2_t;
 
 typedef struct shadermodeinfo_s
 {
@@ -4516,6 +4527,7 @@ void GL_Main_Init(void)
 
 	Cmd_AddCommand("r_glsl_restart", R_GLSL_Restart_f, "unloads GLSL shaders, they will then be reloaded as needed");
 	Cmd_AddCommand("r_glsl_dumpshader", R_GLSL_DumpShader_f, "dumps the engine internal default.glsl shader into glsl/default.glsl");
+
 	// FIXME: the client should set up r_refdef.fog stuff including the fogmasktable
 	if (gamemode == GAME_NEHAHRA)
 	{
@@ -4600,11 +4612,12 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_shadows_quantize_movement);
 	Cvar_RegisterVariable(&r_shadows_quantize_throwdirection);
 
-	
 	Cvar_RegisterVariable(&r_shadows_focus);
 	Cvar_RegisterVariable(&r_shadows_focus2);
 	Cvar_RegisterVariable(&r_shadows_shadowmapscale);
 	Cvar_RegisterVariable(&r_shadows_shadowmapbias);
+	Cvar_RegisterVariable(&r_shadows_shadowmapatlassize);
+	
 	Cvar_RegisterVariable(&r_q1bsp_skymasking);
 	Cvar_RegisterVariable(&r_polygonoffset_submodel_factor);
 	Cvar_RegisterVariable(&r_polygonoffset_submodel_offset);

@@ -734,8 +734,22 @@ static void r_shadow_newmap(void)
 		R_Shadow_EditLights_Reload_f();
 }
 
+static int r_shadow_nummodelshadows;
+
+static void R_ShadowStats_f(void)
+{
+	Con_Printf("Shadow stats:\n");
+	Con_Printf("shadowmap max texture size: %i\n", r_shadow_shadowmaptexturesize);
+	Con_Printf("shadowmap max side: %i\n", r_shadow_shadowmapmaxsize);
+	Con_Printf("shadowmap atlas size: %ix%i\n", r_shadow_shadowmapatlas_state.width, r_shadow_shadowmapatlas_state.height);
+	Con_Printf("modelshadows: %i\n", r_shadow_nummodelshadows);
+	Con_Printf("modelshadows atlas chunk: x %i y %i size %ix%i\n", r_shadow_shadowmapatlas_modelshadows_x, r_shadow_shadowmapatlas_modelshadows_y, r_shadow_shadowmapatlas_modelshadows_size, r_shadow_shadowmapatlas_modelshadows_size);
+}
+
 void R_Shadow_Init(void)
 {
+	Cmd_AddCommand("r_shadow_stats", R_ShadowStats_f, "print information about shadowmap sizes and statistics");
+
 	Cvar_RegisterVariable(&r_shadow_bumpscale_basetexture);
 	Cvar_RegisterVariable(&r_shadow_bumpscale_bumpmap);
 	Cvar_RegisterVariable(&r_shadow_usebihculling);
@@ -5227,29 +5241,44 @@ void R_Shadow_PrepareLights(int fbo, rtexture_t *depthtexture, rtexture_t *color
 			// we actually have to reserve space for the R_DrawModelShadowMaps if that feature is active, it uses 0,0 so this is easy.
 			if (r_shadow_shadowmapatlas_modelshadows_size)
 				Mod_AllocLightmap_Block(&r_shadow_shadowmapatlas_state, r_shadow_shadowmapatlas_modelshadows_size, r_shadow_shadowmapatlas_modelshadows_size, &r_shadow_shadowmapatlas_modelshadows_x, &r_shadow_shadowmapatlas_modelshadows_y);
-			for (lnum = 0; lnum < r_shadow_scenenumlights; lnum++)
+			if (r_shadow_shadowmapatlas_modelshadows_size == r_shadow_shadowmapatlas_state.width)
 			{
-				rtlight_t *rtlight = r_shadow_scenelightlist[lnum];
-				int size = rtlight->shadowmapsidesize >> lod;
-				int width, height;
-				if (!rtlight->castshadows)
-					continue;
-				size = bound(r_shadow_shadowmapborder, size, r_shadow_shadowmaptexturesize);
-				width = size * 2;
-				height = size * 3;
-				// when there are noselfshadow entities in the light bounds, we have to render two separate sets of shadowmaps :(
-				if (rtlight->cached_numshadowentities_noselfshadow)
-					width *= 2;
-				if (Mod_AllocLightmap_Block(&r_shadow_shadowmapatlas_state, width, height, &rtlight->shadowmapatlasposition[0], &rtlight->shadowmapatlasposition[1]))
+				// model shadows take all atlas - dont check
+				for (lnum = 0; lnum < r_shadow_scenenumlights; lnum++)
 				{
-					rtlight->shadowmapatlassidesize = size;
-					packing_success++;
-				}
-				else
-				{
-					// note down that we failed to pack this one, it will have to disable shadows
+					rtlight_t *rtlight = r_shadow_scenelightlist[lnum];
+					if (!rtlight->castshadows)
+						continue;
 					rtlight->shadowmapatlassidesize = 0;
-					packing_failure++;
+					rtlight->castshadows = false;
+				}
+			}
+			else
+			{
+				for (lnum = 0; lnum < r_shadow_scenenumlights; lnum++)
+				{
+					rtlight_t *rtlight = r_shadow_scenelightlist[lnum];
+					int size = rtlight->shadowmapsidesize >> lod;
+					int width, height;
+					if (!rtlight->castshadows)
+						continue;
+					size = bound(r_shadow_shadowmapborder, size, r_shadow_shadowmaptexturesize);
+					width = size * 2;
+					height = size * 3;
+					// when there are noselfshadow entities in the light bounds, we have to render two separate sets of shadowmaps :(
+					if (rtlight->cached_numshadowentities_noselfshadow)
+						width *= 2;
+					if (Mod_AllocLightmap_Block(&r_shadow_shadowmapatlas_state, width, height, &rtlight->shadowmapatlasposition[0], &rtlight->shadowmapatlasposition[1]))
+					{
+						rtlight->shadowmapatlassidesize = size;
+						packing_success++;
+					}
+					else
+					{
+						// note down that we failed to pack this one, it will have to disable shadows
+						rtlight->shadowmapatlassidesize = 0;
+						packing_failure++;
+					}
 				}
 			}
 			// generally everything fits and we stop here on the first iteration
@@ -5302,7 +5331,6 @@ void R_Shadow_DrawLights(void)
 }
 
 #define MAX_MODELSHADOWS 1024
-static int r_shadow_nummodelshadows;
 static entity_render_t *r_shadow_modelshadows[MAX_MODELSHADOWS];
 static vec3_t r_shadow_shadowmaporigin;
 static vec3_t r_shadow_shadowmapthrowdirection;
@@ -5345,7 +5373,7 @@ void R_Shadow_PrepareModelShadows(void)
 		return;
 	}
 
-	size = 2 * r_shadow_shadowmapmaxsize;
+	size = (int)(r_shadow_shadowmapmaxsize * bound(1, r_shadows_shadowmapatlassize.value, 8));
 	scale = r_shadow_shadowmapping_precision.value * r_shadows_shadowmapscale.value;
 	radius = 0.5f * size / scale;
 
