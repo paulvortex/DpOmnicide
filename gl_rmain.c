@@ -3064,7 +3064,13 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 		if (r_glsl_permutation->loc_FogPlaneViewDist >= 0) qglUniform1f(r_glsl_permutation->loc_FogPlaneViewDist, rsurface.fogplaneviewdist);
 		if (r_glsl_permutation->loc_FogRangeRecip >= 0) qglUniform1f(r_glsl_permutation->loc_FogRangeRecip, rsurface.fograngerecip);
 		if (r_glsl_permutation->loc_FogHeightFade >= 0) qglUniform1f(r_glsl_permutation->loc_FogHeightFade, rsurface.fogheightfade);
-		if (r_glsl_permutation->loc_PixelSize >= 0) qglUniform2f(r_glsl_permutation->loc_PixelSize, rsurface.texture->width ? 1.0 / rsurface.texture->width : 1, rsurface.texture->height ? 1.0 / rsurface.texture->height : 1);
+		if (r_glsl_permutation->loc_PixelSize >= 0) 
+		{
+			if (mode == SHADERMODE_WATER)
+				qglUniform2f(r_glsl_permutation->loc_PixelSize, 1.0 / r_fb.water.texturewidth, 1.0 / r_fb.water.textureheight);
+			else
+				qglUniform2f(r_glsl_permutation->loc_PixelSize, rsurface.texture->width ? 1.0 / rsurface.texture->width : 1, rsurface.texture->height ? 1.0 / rsurface.texture->height : 1);
+		}
 		if (r_glsl_permutation->loc_OffsetMapping_ScaleSteps >= 0) qglUniform4f(r_glsl_permutation->loc_OffsetMapping_ScaleSteps,
 				r_glsl_offsetmapping_scale.value*rsurface.texture->offsetscale,
 				max(1, (permutation & SHADERPERMUTATION_OFFSETMAPPING_RELIEFMAPPING) ? r_glsl_offsetmapping_reliefmapping_steps.integer : r_glsl_offsetmapping_steps.integer),
