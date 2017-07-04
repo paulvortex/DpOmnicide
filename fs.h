@@ -56,7 +56,7 @@ extern char fs_gamedirs[MAX_GAMEDIRS][MAX_QPATH];
 // IMPORTANT: the file path is automatically prefixed by the current game directory for
 // each file created by FS_WriteFile, or opened in "write" or "append" mode by FS_OpenRealFile
 
-qboolean FS_AddPack(const char *pakfile, qboolean *already_loaded, qboolean keep_plain_dirs); // already_loaded may be NULL if caller does not care
+qboolean FS_AddPack(const char *pakfile, qboolean *already_loaded, qboolean keep_plain_dirs, const char *force_ext); // already_loaded may be NULL if caller does not care
 const char *FS_WhichPack(const char *filename);
 void FS_CreatePath (char *path);
 int FS_SysOpenFD(const char *filepath, const char *mode, qboolean nonblocking); // uses absolute path

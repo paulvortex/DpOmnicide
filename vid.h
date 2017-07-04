@@ -184,8 +184,8 @@ typedef enum joyhatstate_s
 #define MAXJOYAXIS 16
 #define MAXJOYHAT 4
 #define MAXJOYBUTTON 36 // if this is changed, the corresponding code in vid_shared.c must be updated
-#define JOY_X360_MAXNATURALBUTTON 14 // end of x360 gamepad 'natural' buttons, beginning of emulated buttons
-#define JOY_DS_MAXNATURALBUTTON 16   // end of Sony DualShock gamepad 'natural' buttons, beginning of emulated buttons
+#define JOY_X360_MAXNATURALBUTTON 14 // end of x360 gamepad 'natural' buttons, and the beginning of emulated buttons
+#define JOY_DS_MAXNATURALBUTTON   14 // end of Sony DualShock gamepad 'natural' buttons, and the beginning of emulated buttons
 typedef struct vid_joystate_s
 {
 	int numaxes;

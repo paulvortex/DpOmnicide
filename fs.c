@@ -347,7 +347,7 @@ void FS_Dir_f(void);
 void FS_Ls_f(void);
 void FS_Which_f(void);
 
-static searchpath_t *FS_FindFile (const char *name, int* index, qboolean quiet);
+static searchpath_t *FS_FindFile (const char *name, int* index, qboolean quiet, qboolean searchpaks);
 static packfile_t* FS_AddFileToPack (const char* name, pack_t* pack,
 									fs_offset_t offset, fs_offset_t packsize,
 									fs_offset_t realsize, int flags);
@@ -1118,11 +1118,11 @@ FS_AddPack_Fullpath
  * plain directories.
  *
  */
-static qboolean FS_AddPack_Fullpath(const char *pakfile, const char *shortname, qboolean *already_loaded, qboolean keep_plain_dirs)
+static qboolean FS_AddPack_Fullpath(const char *pakfile, const char *shortname, qboolean *already_loaded, qboolean keep_plain_dirs, const char *force_ext)
 {
 	searchpath_t *search;
 	pack_t *pak = NULL;
-	const char *ext = FS_FileExtension(pakfile);
+	const char *ext = force_ext != NULL ? force_ext : FS_FileExtension(pakfile);
 	size_t l;
 
 	for(search = fs_searchpaths; search; search = search->next)
@@ -1232,7 +1232,7 @@ FS_AddPack
  * If keep_plain_dirs is set, the pack will be added AFTER the first sequence of
  * plain directories.
  */
-qboolean FS_AddPack(const char *pakfile, qboolean *already_loaded, qboolean keep_plain_dirs)
+qboolean FS_AddPack(const char *pakfile, qboolean *already_loaded, qboolean keep_plain_dirs, const char *force_ext)
 {
 	char fullpath[MAX_OSPATH];
 	int index;
@@ -1242,7 +1242,7 @@ qboolean FS_AddPack(const char *pakfile, qboolean *already_loaded, qboolean keep
 		*already_loaded = false;
 
 	// then find the real name...
-	search = FS_FindFile(pakfile, &index, true);
+	search = FS_FindFile(pakfile, &index, true, true);
 	if(!search || search->pack)
 	{
 		Con_Printf("could not find pak \"%s\"\n", pakfile);
@@ -1251,7 +1251,7 @@ qboolean FS_AddPack(const char *pakfile, qboolean *already_loaded, qboolean keep
 
 	dpsnprintf(fullpath, sizeof(fullpath), "%s%s", search->filename, pakfile);
 
-	return FS_AddPack_Fullpath(fullpath, pakfile, already_loaded, keep_plain_dirs);
+	return FS_AddPack_Fullpath(fullpath, pakfile, already_loaded, keep_plain_dirs, force_ext);
 }
 
 
@@ -1280,7 +1280,7 @@ static void FS_AddGameDirectory (const char *dir)
 	{
 		if (!strcasecmp(FS_FileExtension(list.strings[i]), "pak"))
 		{
-			FS_AddPack_Fullpath(list.strings[i], list.strings[i] + strlen(dir), NULL, false);
+			FS_AddPack_Fullpath(list.strings[i], list.strings[i] + strlen(dir), NULL, false, NULL);
 		}
 	}
 
@@ -1289,7 +1289,7 @@ static void FS_AddGameDirectory (const char *dir)
 	{
 		if (!strcasecmp(FS_FileExtension(list.strings[i]), "pk3") || !strcasecmp(FS_FileExtension(list.strings[i]), "obb") || !strcasecmp(FS_FileExtension(list.strings[i]), "pk3dir"))
 		{
-			FS_AddPack_Fullpath(list.strings[i], list.strings[i] + strlen(dir), NULL, false);
+			FS_AddPack_Fullpath(list.strings[i], list.strings[i] + strlen(dir), NULL, false, NULL);
 		}
 	}
 
@@ -1516,6 +1516,50 @@ void FS_Rescan (void)
 static void FS_Rescan_f(void)
 {
 	FS_Rescan();
+}
+
+static void FS_AddPack_f(void)
+{
+	const char *filename, *ext;
+	qboolean already_loaded;
+	searchpath_t *sp;
+	int index;
+
+	if (Cmd_Argc() != 3)
+	{
+		Con_Printf("usage:\n%s <file> <extension>\n", Cmd_Argv(0));
+		return;
+	}  
+
+	// get filename
+	filename = Cmd_Argv(1);
+	if (FS_CheckNastyPath(filename, false))
+	{
+		Con_Printf("AddPack: nasty path %s rejected\n", filename);
+		return;
+	}
+
+	// find file
+	sp = FS_FindFile(filename, &index, true, false);
+	if (!sp) {
+		Con_Printf("%s isn't anywhere\n", filename);
+		return;
+	}
+
+	// get extension
+	ext = Cmd_Argv(2);
+	if (FS_CheckNastyPath(ext, false))
+	{
+		Con_Printf("AddPack: nasty path %s rejected\n", ext);
+		return;
+	}
+
+	// add it
+	if (FS_AddPack(filename, &already_loaded, false, ext))
+	{
+		if (already_loaded)
+			Con_Printf("AddPack: packfile %s is already loaded\n", ext);
+	}
 }
 
 /*
@@ -2188,6 +2232,8 @@ void FS_Init_Commands(void)
 
 	Cmd_AddCommand ("gamedir", FS_GameDir_f, "changes active gamedir list (can take multiple arguments), not including base directory (example usage: gamedir ctf)");
 	Cmd_AddCommand ("fs_rescan", FS_Rescan_f, "rescans filesystem for new pack archives and any other changes");
+	Cmd_AddCommand ("fs_addpack", FS_AddPack_f, "Adds the given pack to the search path. Second parm should contain the file extension used to detect pack type.");
+
 	Cmd_AddCommand ("path", FS_Path_f, "print searchpath (game directories and archives)");
 	Cmd_AddCommand ("dir", FS_Dir_f, "list files in searchpath matching an * filename pattern, one per line");
 	Cmd_AddCommand ("ls", FS_Ls_f, "list files in searchpath matching an * filename pattern, multiple per line");
@@ -2509,7 +2555,7 @@ Return the searchpath where the file was found (or NULL)
 and the file index in the package if relevant
 ====================
 */
-static searchpath_t *FS_FindFile (const char *name, int* index, qboolean quiet)
+static searchpath_t *FS_FindFile (const char *name, int* index, qboolean quiet, qboolean searchpaks)
 {
 	searchpath_t *search;
 	pack_t *pak;
@@ -2520,50 +2566,53 @@ static searchpath_t *FS_FindFile (const char *name, int* index, qboolean quiet)
 		// is the element a pak file?
 		if (search->pack && !search->pack->vpack)
 		{
-			int (*strcmp_funct) (const char* str1, const char* str2);
-			int left, right, middle;
-
-			pak = search->pack;
-			strcmp_funct = pak->ignorecase ? strcasecmp : strcmp;
-
-			// Look for the file (binary search)
-			left = 0;
-			right = pak->numfiles - 1;
-			while (left <= right)
+			if (searchpaks)
 			{
-				int diff;
+				int (*strcmp_funct) (const char* str1, const char* str2);
+				int left, right, middle;
 
-				middle = (left + right) / 2;
-				diff = strcmp_funct (pak->files[middle].name, name);
+				pak = search->pack;
+				strcmp_funct = pak->ignorecase ? strcasecmp : strcmp;
 
-				// Found it
-				if (!diff)
+				// Look for the file (binary search)
+				left = 0;
+				right = pak->numfiles - 1;
+				while (left <= right)
 				{
-					if (fs_empty_files_in_pack_mark_deletions.integer && pak->files[middle].realsize == 0)
+					int diff;
+
+					middle = (left + right) / 2;
+					diff = strcmp_funct (pak->files[middle].name, name);
+
+					// Found it
+					if (!diff)
 					{
-						// yes, but the first one is empty so we treat it as not being there
+						if (fs_empty_files_in_pack_mark_deletions.integer && pak->files[middle].realsize == 0)
+						{
+							// yes, but the first one is empty so we treat it as not being there
+							if (!quiet && developer_extra.integer)
+								Con_DPrintf("FS_FindFile: %s is marked as deleted\n", name);
+
+							if (index != NULL)
+								*index = -1;
+							return NULL;
+						}
+
 						if (!quiet && developer_extra.integer)
-							Con_DPrintf("FS_FindFile: %s is marked as deleted\n", name);
+							Con_DPrintf("FS_FindFile: %s in %s\n",
+										pak->files[middle].name, pak->filename);
 
 						if (index != NULL)
-							*index = -1;
-						return NULL;
+							*index = middle;
+						return search;
 					}
 
-					if (!quiet && developer_extra.integer)
-						Con_DPrintf("FS_FindFile: %s in %s\n",
-									pak->files[middle].name, pak->filename);
-
-					if (index != NULL)
-						*index = middle;
-					return search;
+					// If we're too far in the list
+					if (diff > 0)
+						right = middle - 1;
+					else
+						left = middle + 1;
 				}
-
-				// If we're too far in the list
-				if (diff > 0)
-					right = middle - 1;
-				else
-					left = middle + 1;
 			}
 		}
 		else
@@ -2603,7 +2652,7 @@ static qfile_t *FS_OpenReadFile (const char *filename, qboolean quiet, qboolean 
 	searchpath_t *search;
 	int pack_ind;
 
-	search = FS_FindFile (filename, &pack_ind, quiet);
+	search = FS_FindFile (filename, &pack_ind, quiet, true);
 
 	// Not found?
 	if (search == NULL)
@@ -3487,7 +3536,7 @@ int FS_FileType (const char *filename)
 	searchpath_t *search;
 	char fullpath[MAX_OSPATH];
 
-	search = FS_FindFile (filename, NULL, true);
+	search = FS_FindFile (filename, NULL, true, true);
 	if(!search)
 		return FS_FILETYPE_NONE;
 
@@ -3508,7 +3557,7 @@ Look for a file in the packages and in the filesystem
 */
 qboolean FS_FileExists (const char *filename)
 {
-	return (FS_FindFile (filename, NULL, true) != NULL);
+	return (FS_FindFile (filename, NULL, true, true) != NULL);
 }
 
 
@@ -3874,7 +3923,7 @@ void FS_Which_f(void)
 		return;
 	}  
 	filename = Cmd_Argv(1);
-	sp = FS_FindFile(filename, &index, true);
+	sp = FS_FindFile(filename, &index, true, true);
 	if (!sp) {
 		Con_Printf("%s isn't anywhere\n", filename);
 		return;
@@ -3894,7 +3943,7 @@ void FS_Which_f(void)
 const char *FS_WhichPack(const char *filename)
 {
 	int index;
-	searchpath_t *sp = FS_FindFile(filename, &index, true);
+	searchpath_t *sp = FS_FindFile(filename, &index, true, true);
 	if(sp && sp->pack)
 		return sp->pack->shortname;
 	else if(sp)
