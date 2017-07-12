@@ -5,7 +5,7 @@
 typedef struct meshqueue_s
 {
 	struct meshqueue_s *next;
-	void (*callback)(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfaceindices);
+	void (*callback)(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfaceindices, qboolean depthonly);
 	const entity_render_t *ent;
 	int surfacenumber;
 	const rtlight_t *rtlight;
@@ -31,7 +31,7 @@ void R_MeshQueue_BeginScene(void)
 	mqt_viewmaxdist = 0;
 }
 
-void R_MeshQueue_AddTransparent(dptransparentsortcategory_t category, const vec3_t center, void (*callback)(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist), const entity_render_t *ent, int surfacenumber, const rtlight_t *rtlight)
+void R_MeshQueue_AddTransparent(dptransparentsortcategory_t category, const vec3_t center, void (*callback)(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist, qboolean depthonly), const entity_render_t *ent, int surfacenumber, const rtlight_t *rtlight)
 {
 	meshqueue_t *mq;
 	if (mqt_count >= mqt_total || !mqt_array)
@@ -60,13 +60,13 @@ void R_MeshQueue_AddTransparent(dptransparentsortcategory_t category, const vec3
 	mqt_viewmaxdist = max(mqt_viewmaxdist, mq->dist);
 }
 
-void R_MeshQueue_RenderTransparent(void)
+void R_MeshQueue_RenderTransparent(qboolean depthonly)
 {
 	int i, hashindex, maxhashindex, batchnumsurfaces;
 	float distscale;
 	const entity_render_t *ent;
 	const rtlight_t *rtlight;
-	void (*callback)(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfaceindices);
+	void (*callback)(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfaceindices, qboolean depthonly);
 	int batchsurfaceindex[MESHQUEUE_TRANSPARENT_BATCHSIZE];
 	meshqueue_t *mqt;
 
@@ -135,7 +135,7 @@ void R_MeshQueue_RenderTransparent(void)
 				if (ent != mqt->ent || rtlight != mqt->rtlight || callback != mqt->callback || batchnumsurfaces >= MESHQUEUE_TRANSPARENT_BATCHSIZE)
 				{
 					if (batchnumsurfaces)
-						callback(ent, rtlight, batchnumsurfaces, batchsurfaceindex);
+						callback(ent, rtlight, batchnumsurfaces, batchsurfaceindex, depthonly);
 					batchnumsurfaces = 0;
 					ent = mqt->ent;
 					rtlight = mqt->rtlight;
@@ -146,6 +146,6 @@ void R_MeshQueue_RenderTransparent(void)
 		}
 	}
 	if (batchnumsurfaces)
-		callback(ent, rtlight, batchnumsurfaces, batchsurfaceindex);
+		callback(ent, rtlight, batchnumsurfaces, batchsurfaceindex, depthonly);
 	mqt_count = 0;
 }

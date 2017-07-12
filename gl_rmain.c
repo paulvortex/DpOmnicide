@@ -82,6 +82,7 @@ cvar_t r_equalize_entities_by = {CVAR_SAVE, "r_equalize_entities_by", "0.7", "li
 cvar_t r_equalize_entities_to = {CVAR_SAVE, "r_equalize_entities_to", "0.8", "light equalizing: target light level"};
 
 cvar_t r_depthfirst = {CVAR_SAVE, "r_depthfirst", "0", "renders a depth-only version of the scene before normal rendering begins to eliminate overdraw, values: 0 = off, 1 = world depth, 2 = world and model depth"};
+cvar_t r_depthtexture = {CVAR_SAVE, "r_depthtexture", "1", "saves depth to framebuffer (uses r_depthfirst pass or make additional render pass if r_depthfirst is 0 or vid_samples > 1), required for scene depth effects (such as z-feather, outlining, ambient occlusion)"};
 cvar_t r_useinfinitefarclip = {CVAR_SAVE, "r_useinfinitefarclip", "1", "enables use of a special kind of projection matrix that has an extremely large farclip"};
 cvar_t r_farclip_base = {0, "r_farclip_base", "65536", "farclip (furthest visible distance) for rendering when r_useinfinitefarclip is 0"};
 cvar_t r_farclip_world = {0, "r_farclip_world", "2", "adds map size to farclip multiplied by this value"};
@@ -830,6 +831,7 @@ typedef struct r_glsl_permutation_s
 	// texture units assigned to each detected uniform
 	int tex_Texture_First;
 	int tex_Texture_Second;
+	int tex_Texture_Depth;
 	int tex_Texture_GammaRamps;
 	int tex_Texture_Normal;
 	int tex_Texture_Color;
@@ -860,6 +862,7 @@ typedef struct r_glsl_permutation_s
 	/// locations of detected uniforms in program object, or -1 if not found
 	int loc_Texture_First;
 	int loc_Texture_Second;
+	int loc_Texture_Depth;
 	int loc_Texture_GammaRamps;
 	int loc_Texture_Normal;
 	int loc_Texture_Color;
@@ -1317,6 +1320,7 @@ static void R_GLSL_CompilePermutation(r_glsl_permutation_t *p, unsigned int mode
 
 		p->loc_Texture_First              = qglGetUniformLocation(p->program, "Texture_First");
 		p->loc_Texture_Second             = qglGetUniformLocation(p->program, "Texture_Second");
+		p->loc_Texture_Depth              = qglGetUniformLocation(p->program, "Texture_Depth");
 		p->loc_Texture_GammaRamps         = qglGetUniformLocation(p->program, "Texture_GammaRamps");
 		p->loc_Texture_Normal             = qglGetUniformLocation(p->program, "Texture_Normal");
 		p->loc_Texture_Color              = qglGetUniformLocation(p->program, "Texture_Color");
@@ -1414,6 +1418,7 @@ static void R_GLSL_CompilePermutation(r_glsl_permutation_t *p, unsigned int mode
 		// initialize the samplers to refer to the texture units we use
 		p->tex_Texture_First = -1;
 		p->tex_Texture_Second = -1;
+		p->tex_Texture_Depth = -1;
 		p->tex_Texture_GammaRamps = -1;
 		p->tex_Texture_Normal = -1;
 		p->tex_Texture_Color = -1;
@@ -1445,6 +1450,7 @@ static void R_GLSL_CompilePermutation(r_glsl_permutation_t *p, unsigned int mode
 		sampler = 0;
 		if (p->loc_Texture_First           >= 0) {p->tex_Texture_First            = sampler;qglUniform1i(p->loc_Texture_First           , sampler);sampler++;}
 		if (p->loc_Texture_Second          >= 0) {p->tex_Texture_Second           = sampler;qglUniform1i(p->loc_Texture_Second          , sampler);sampler++;}
+		if (p->loc_Texture_Depth           >= 0) {p->tex_Texture_Depth            = sampler;qglUniform1i(p->loc_Texture_Depth           , sampler);sampler++;}
 		if (p->loc_Texture_GammaRamps      >= 0) {p->tex_Texture_GammaRamps       = sampler;qglUniform1i(p->loc_Texture_GammaRamps      , sampler);sampler++;}
 		if (p->loc_Texture_Normal          >= 0) {p->tex_Texture_Normal           = sampler;qglUniform1i(p->loc_Texture_Normal          , sampler);sampler++;}
 		if (p->loc_Texture_Color           >= 0) {p->tex_Texture_Color            = sampler;qglUniform1i(p->loc_Texture_Color           , sampler);sampler++;}
@@ -2227,7 +2233,7 @@ void R_SetupShader_Generic_NoTexture(qboolean usegamma, qboolean notrippy)
 	R_SetupShader_Generic(NULL, NULL, GL_MODULATE, 1, usegamma, notrippy, false, false);
 }
 
-void R_SetupShader_DepthOrShadow(qboolean notrippy, qboolean depthrgb, qboolean skeletal)
+void R_SetupShader_DepthOrShadow(qboolean notrippy, qboolean depthrgb, qboolean skeletal, qboolean usesurface)
 {
 	unsigned int permutation = 0;
 	if (r_trippy.integer && !notrippy)
@@ -2236,6 +2242,13 @@ void R_SetupShader_DepthOrShadow(qboolean notrippy, qboolean depthrgb, qboolean 
 		permutation |= SHADERPERMUTATION_DEPTHRGB;
 	if (skeletal)
 		permutation |= SHADERPERMUTATION_SKELETAL;
+	if (usesurface)
+	{
+		if (rsurface.texture->vegetation && r_vegetation.integer)
+			permutation |= SHADERPERMUTATION_VEGETATION;
+		if (rsurface.texture->currentmaterialflags & MATERIALFLAG_ALPHATEST)
+			permutation |= SHADERPERMUTATION_ALPHAKILL;
+	}
 	if (vid.allowalphatocoverage)
 		GL_AlphaToCoverage(false);
 	switch (vid.renderpath)
@@ -2257,6 +2270,23 @@ void R_SetupShader_DepthOrShadow(qboolean notrippy, qboolean depthrgb, qboolean 
 #ifndef USE_GLES2 /* FIXME: GLES3 only */
 		if (r_glsl_permutation->ubiloc_Skeletal_Transform12_UniformBlock >= 0 && rsurface.batchskeletaltransform3x4buffer) qglBindBufferRange(GL_UNIFORM_BUFFER, r_glsl_permutation->ubibind_Skeletal_Transform12_UniformBlock, rsurface.batchskeletaltransform3x4buffer->bufferobject, rsurface.batchskeletaltransform3x4offset, rsurface.batchskeletaltransform3x4size);
 #endif
+		if (usesurface)
+		{
+			if (r_glsl_permutation->loc_VegetationParameters >= 0) 
+			{ 
+				float waveamplitude = rsurface.texture->vegetationwaveamplitude * r_vegetation_wave_amplitude.value;
+				float wavespeed = rsurface.texture->vegetationwavespeed * r_vegetation_wave_speed.value;
+				float waverotation = rsurface.texture->vegetationwaverotation * r_vegetation_wave_rotation.value;
+				qglUniform4f(r_glsl_permutation->loc_VegetationParameters, rsurface.texture->vegetationheight, min(waveamplitude, rsurface.texture->vegetationmaxamplitude), min(waverotation, rsurface.texture->vegetationmaxspeed), min(wavespeed, rsurface.texture->vegetationmaxrotation) ); 
+			}
+			if (r_glsl_permutation->loc_WindDir >= 0) { qglUniform3f(r_glsl_permutation->loc_WindDir, r_wind_direction.vector[0], r_wind_direction.vector[1], r_wind_direction.vector[2]); }
+			if (r_glsl_permutation->loc_WindParameters >= 0) { qglUniform4f(r_glsl_permutation->loc_WindParameters, r_wind_vibration_amplitude.value * rsurface.texture->windamplitudemod, r_wind_tilt.value * rsurface.texture->windtiltmod, r_wind_vibration_speed.value * rsurface.texture->windspeedmod, 0.0); }
+			// textures
+			if (r_glsl_permutation->tex_Texture_Normal          >= 0)
+				R_Mesh_TexBind(r_glsl_permutation->tex_Texture_Normal, rsurface.texture->nmaptexture);
+			if (r_glsl_permutation->tex_Texture_Color           >= 0)
+				R_Mesh_TexBind(r_glsl_permutation->tex_Texture_Color, rsurface.texture->basetexture);
+		}
 		break;
 	case RENDERPATH_GL13:
 	case RENDERPATH_GLES1:
@@ -4563,6 +4593,7 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_equalize_entities_by);
 	Cvar_RegisterVariable(&r_equalize_entities_to);
 	Cvar_RegisterVariable(&r_depthfirst);
+	Cvar_RegisterVariable(&r_depthtexture);
 	Cvar_RegisterVariable(&r_useinfinitefarclip);
 	Cvar_RegisterVariable(&r_farclip_base);
 	Cvar_RegisterVariable(&r_farclip_world);
@@ -5634,7 +5665,7 @@ static void R_DrawModels(void)
 	}
 }
 
-static void R_DrawModelsDepth(void)
+static void R_DrawModelsDepth(qboolean postprocessdepth)
 {
 	int i;
 	entity_render_t *ent;
@@ -5645,7 +5676,7 @@ static void R_DrawModelsDepth(void)
 			continue;
 		ent = r_refdef.scene.entities[i];
 		if (ent->model && ent->model->DrawDepth != NULL)
-			ent->model->DrawDepth(ent);
+			ent->model->DrawDepth(ent, postprocessdepth);
 	}
 }
 
@@ -6785,6 +6816,10 @@ static void R_Bloom_StartFrame(void)
 			R_FreeTexture(r_fb.depthtexture);
 		r_fb.depthtexture = NULL;
 
+		if (r_fb.postprocessdepthtexture)
+			R_FreeTexture(r_fb.postprocessdepthtexture);
+		r_fb.postprocessdepthtexture = NULL;
+		
 		if (r_fb.ghosttexture)
 			R_FreeTexture(r_fb.ghosttexture);
 		r_fb.ghosttexture = NULL;
@@ -6801,6 +6836,8 @@ static void R_Bloom_StartFrame(void)
 				r_fb.ghosttexture = R_LoadTexture2D(r_main_texturepool, "framebuffermotionblur", r_fb.screentexturewidth, r_fb.screentextureheight, NULL, r_fb.textype, TEXF_RENDERTARGET | TEXF_FORCELINEAR | TEXF_CLAMP, -1, NULL);
 			r_fb.ghosttexture_valid = false;
 			r_fb.colortexture = R_LoadTexture2D(r_main_texturepool, "framebuffercolor", r_fb.screentexturewidth, r_fb.screentextureheight, NULL, r_fb.textype, TEXF_RENDERTARGET | TEXF_FORCELINEAR | TEXF_CLAMP, -1, NULL);
+			if (r_depthtexture.integer > 0)
+				r_fb.postprocessdepthtexture = R_LoadTexture2D(r_main_texturepool, "framebufferpostprocessdepth", r_fb.screentexturewidth, r_fb.screentextureheight, NULL, r_fb.textype, TEXF_RENDERTARGET | TEXF_FORCELINEAR | TEXF_CLAMP, -1, NULL);
 			if (useviewfbo)
 			{
 				r_fb.depthtexture = R_LoadTextureRenderBuffer(r_main_texturepool, "framebufferdepth", r_fb.screentexturewidth, r_fb.screentextureheight, TEXTYPE_DEPTHBUFFER24STENCIL8);
@@ -7178,8 +7215,9 @@ static void R_BlendView(int fbo, rtexture_t *depthtexture, rtexture_t *colortext
 		case RENDERPATH_GLES2:
 			R_Mesh_PrepareVertices_Mesh_Arrays(4, r_screenvertex3f, NULL, NULL, NULL, NULL, r_fb.screentexcoord2f, r_fb.bloomtexcoord2f);
 			R_SetupShader_SetPermutationGLSL(SHADERMODE_POSTPROCESS, permutation);
-			if (r_glsl_permutation->tex_Texture_First           >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_First     , r_fb.colortexture);
-			if (r_glsl_permutation->tex_Texture_Second          >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_Second    , r_fb.bloomtexture[r_fb.bloomindex]);
+			if (r_glsl_permutation->tex_Texture_First           >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_First   , r_fb.colortexture);
+			if (r_glsl_permutation->tex_Texture_Depth           >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_Depth   , r_fb.postprocessdepthtexture);
+			if (r_glsl_permutation->tex_Texture_Second          >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_Second  , r_fb.bloomtexture[r_fb.bloomindex]);
 			if (r_glsl_permutation->tex_Texture_GammaRamps      >= 0) R_Mesh_TexBind(r_glsl_permutation->tex_Texture_GammaRamps, r_texture_gammaramps       );
 			if (r_glsl_permutation->loc_ViewTintColor           >= 0) qglUniform4f(r_glsl_permutation->loc_ViewTintColor     , r_refdef.viewblend[0], r_refdef.viewblend[1], r_refdef.viewblend[2], r_refdef.viewblend[3]);
 			if (r_glsl_permutation->loc_PixelSize               >= 0) qglUniform2f(r_glsl_permutation->loc_PixelSize         , 1.0/r_fb.screentexturewidth, 1.0/r_fb.screentextureheight);
@@ -7668,6 +7706,22 @@ void R_RenderWaterPlanes(int fbo, rtexture_t *depthtexture, rtexture_t *colortex
 	}
 }
 
+void R_DepthPass(int mode, bool postprocessdepth)
+{
+	if (mode >= 1 && cl.csqc_vidvars.drawworld && r_refdef.scene.worldmodel && r_refdef.scene.worldmodel->DrawDepth)
+	{
+		r_refdef.scene.worldmodel->DrawDepth(r_refdef.scene.worldentity, postprocessdepth);
+		if (r_timereport_active)
+			R_TimeReport("worlddepth");
+	}
+	if (mode >= 2)
+	{
+		R_DrawModelsDepth(postprocessdepth);
+		if (r_timereport_active)
+			R_TimeReport("modeldepth");
+	}
+}
+
 extern cvar_t cl_locs_show;
 static void R_DrawLocs(void);
 static void R_DrawEntityBBoxes(void);
@@ -7750,18 +7804,37 @@ void R_RenderScene(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture)
 	}
 
 	// now we begin the forward pass of the view render
-	if (r_depthfirst.integer >= 1 && cl.csqc_vidvars.drawworld && r_refdef.scene.worldmodel && r_refdef.scene.worldmodel->DrawDepth)
+	if (r_depthfirst.integer >= 1)
 	{
-		r_refdef.scene.worldmodel->DrawDepth(r_refdef.scene.worldentity);
-		if (r_timereport_active)
-			R_TimeReport("worlddepth");
+		// if multisampling is active, we should render screen depth, then normal depth
+		if (r_fb.postprocessdepthtexture && vid_samples.integer > 1)
+		{
+			R_DepthPass(r_depthfirst.integer, true);
+			GL_Clear(GL_DEPTH_BUFFER_BIT, NULL, 1.0f, 0);
+			// store postprocess depth texture
+			R_Mesh_CopyToTexture(r_fb.postprocessdepthtexture, 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
+			if (r_timereport_active)
+				R_TimeReport("postprocdepth");
+		}
+		// forward pass
+		// if multisampling is not active, we can use depthfirst render path
+		R_DepthPass(r_depthfirst.integer, r_fb.postprocessdepthtexture && vid_samples.integer <= 1);
+		if (r_fb.postprocessdepthtexture && vid_samples.integer <= 1)
+		{
+			// store postprocess depth texture
+			R_Mesh_CopyToTexture(r_fb.postprocessdepthtexture, 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
+			if (r_timereport_active)
+				R_TimeReport("postprocdepth");
+		}
 	}
-
-	if (r_depthfirst.integer >= 2)
+	else if (r_depthtexture.integer > 0 && r_fb.postprocessdepthtexture)
 	{
-		R_DrawModelsDepth();
+		R_DepthPass(2, true);
+		GL_Clear(GL_DEPTH_BUFFER_BIT, NULL, 1.0f, 0);
+		// store postprocess depth texture
+		R_Mesh_CopyToTexture(r_fb.postprocessdepthtexture, 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
 		if (r_timereport_active)
-			R_TimeReport("modeldepth");
+				R_TimeReport("postprocdepth");
 	}
 
 	if (cl.csqc_vidvars.drawworld && r_refdef.scene.worldmodel && r_refdef.scene.worldmodel->Draw)
@@ -7889,7 +7962,7 @@ void R_RenderScene(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture)
 
 	if (r_transparent.integer)
 	{
-		R_MeshQueue_RenderTransparent();
+		R_MeshQueue_RenderTransparent(false);
 		if (r_timereport_active)
 			R_TimeReport("drawtrans");
 	}
@@ -7986,7 +8059,7 @@ static void R_DrawBBoxMesh(vec3_t mins, vec3_t maxs, float cr, float cg, float c
 	R_Mesh_Draw(0, 8, 0, 12, NULL, NULL, 0, bboxelements, NULL, 0);
 }
 
-static void R_DrawEntityBBoxes_Callback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist)
+static void R_DrawEntityBBoxes_Callback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist, qboolean depthonly)
 {
 	prvm_prog_t *prog = SVVM_prog;
 	int i;
@@ -8091,7 +8164,7 @@ static const float nomodelcolor4f[6*4] =
 	0.5f, 0.0f, 0.0f, 1.0f
 };
 
-static void R_DrawNoModel_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist)
+static void R_DrawNoModel_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist, qboolean depthonly)
 {
 	int i;
 	float f1, f2, *c;
@@ -8153,7 +8226,7 @@ void R_DrawNoModel(entity_render_t *ent)
 	if ((ent->flags & RENDER_ADDITIVE) || (ent->alpha < 1))
 		R_MeshQueue_AddTransparent((ent->flags & RENDER_NODEPTHTEST) ? TRANSPARENTSORT_HUD : TRANSPARENTSORT_DISTANCE, org, R_DrawNoModel_TransparentCallback, ent, 0, rsurface.rtlight);
 	else
-		R_DrawNoModel_TransparentCallback(ent, rsurface.rtlight, 0, NULL);
+		R_DrawNoModel_TransparentCallback(ent, rsurface.rtlight, 0, NULL, false);
 }
 
 void R_CalcBeam_Vertex3f (float *vert, const float *org1, const float *org2, float width)
@@ -11093,7 +11166,7 @@ static void R_DrawTextureSurfaceList_Sky(int texturenumsurfaces, const msurface_
 		R_Mesh_ResetTextureState();
 		if (skyrendermasked)
 		{
-			R_SetupShader_DepthOrShadow(false, false, false);
+			R_SetupShader_DepthOrShadow(false, false, false, false);
 			// depth-only (masking)
 			GL_ColorMask(0,0,0,0);
 			// just to make sure that braindead drivers don't draw
@@ -11657,7 +11730,7 @@ static void R_DrawModelTextureSurfaceList(int texturenumsurfaces, const msurface
 	CHECKGLERROR
 }
 
-static void R_DrawSurface_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist)
+static void R_DrawSurface_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist, qboolean depthonly)
 {
 	int i, j;
 	int texturenumsurfaces, endsurface;
@@ -11730,7 +11803,7 @@ static void R_DrawSurface_TransparentCallback(const entity_render_t *ent, const 
 			}
 			RSurf_SetupDepthAndCulling();
 			RSurf_PrepareVerticesForBatch(BATCHNEED_ARRAY_VERTEX | BATCHNEED_ALLOWMULTIDRAW, texturenumsurfaces, texturesurfacelist);
-			R_SetupShader_DepthOrShadow(false, false, !!rsurface.batchskeletaltransform3x4);
+			R_SetupShader_DepthOrShadow(false, false, !!rsurface.batchskeletaltransform3x4, false);
 			R_Mesh_PrepareVertices_Vertex3f(rsurface.batchnumvertices, rsurface.batchvertex3f, rsurface.batchvertex3f_vertexbuffer, rsurface.batchvertex3f_bufferoffset);
 			RSurf_DrawBatch();
 		}
@@ -11815,26 +11888,42 @@ static void R_ProcessTransparentTextureSurfaceList(int texturenumsurfaces, const
 	}
 }
 
-static void R_DrawTextureSurfaceList_DepthOnly(int texturenumsurfaces, const msurface_t **texturesurfacelist)
+static void R_DrawTextureSurfaceList_DepthOnly(int texturenumsurfaces, const msurface_t **texturesurfacelist, qboolean postprocessdepth)
 {
-	if ((rsurface.texture->currentmaterialflags & (MATERIALFLAG_NODEPTHTEST | MATERIALFLAG_BLENDED | MATERIALFLAG_ALPHATEST)))
+	if (rsurface.texture->currentmaterialflags & MATERIALFLAG_NODEPTHTEST)
 		return;
+	if (rsurface.texture->currentmaterialflags & MATERIALFLAG_BLENDED)
+		if (!postprocessdepth || (rsurface.texture->basematerialflags & MATERIALFLAG_BLENDED))
+			return;
 	if (r_fb.water.renderingscene && (rsurface.texture->currentmaterialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFLECTION)))
 		return;
-	if (rsurface.texture->vegetation && r_vegetation.integer)
+	if ((rsurface.texture->vegetation && r_vegetation.integer) || (rsurface.texture->currentmaterialflags & MATERIALFLAG_ALPHATEST))
+	{
+		if (postprocessdepth)
+		{
+			// render with alphakill and vegetation shader
+			RSurf_SetupDepthAndCulling();
+			RSurf_PrepareVerticesForBatch(BATCHNEED_ARRAY_VERTEX | BATCHNEED_ARRAY_VERTEXCOLOR | BATCHNEED_ARRAY_TEXCOORD | BATCHNEED_ALLOWMULTIDRAW, texturenumsurfaces, texturesurfacelist);
+			R_Mesh_PrepareVertices_Vertex3f(rsurface.batchnumvertices, rsurface.batchvertex3f, rsurface.batchvertex3f_vertexbuffer, rsurface.batchvertex3f_bufferoffset);
+			R_Mesh_ColorPointer(4, GL_FLOAT, sizeof(float[4]), rsurface.batchlightmapcolor4f, rsurface.batchlightmapcolor4f_vertexbuffer, rsurface.batchlightmapcolor4f_bufferoffset);
+			R_Mesh_TexCoordPointer(0, 2, GL_FLOAT, sizeof(float[2]), rsurface.batchtexcoordtexture2f, rsurface.batchtexcoordtexture2f_vertexbuffer, rsurface.batchtexcoordtexture2f_bufferoffset);
+			R_SetupShader_DepthOrShadow(false, r_depthtexture.integer > 0, !!rsurface.batchskeletaltransform3x4, true);
+			RSurf_DrawBatch();
+		}
 		return;
+	}
 	RSurf_SetupDepthAndCulling();
 	RSurf_PrepareVerticesForBatch(BATCHNEED_ARRAY_VERTEX | BATCHNEED_ALLOWMULTIDRAW, texturenumsurfaces, texturesurfacelist);
 	R_Mesh_PrepareVertices_Vertex3f(rsurface.batchnumvertices, rsurface.batchvertex3f, rsurface.batchvertex3f_vertexbuffer, rsurface.batchvertex3f_bufferoffset);
-	R_SetupShader_DepthOrShadow(false, false, !!rsurface.batchskeletaltransform3x4);
+	R_SetupShader_DepthOrShadow(false, r_depthtexture.integer > 0, !!rsurface.batchskeletaltransform3x4, false);
 	RSurf_DrawBatch();
 }
 
-static void R_ProcessWorldTextureSurfaceList(int texturenumsurfaces, const msurface_t **texturesurfacelist, qboolean writedepth, qboolean depthonly, qboolean prepass)
+static void R_ProcessWorldTextureSurfaceList(int texturenumsurfaces, const msurface_t **texturesurfacelist, qboolean writedepth, qboolean depthonly, qboolean prepass, qboolean postprocessdepth)
 {
 	CHECKGLERROR
 	if (depthonly)
-		R_DrawTextureSurfaceList_DepthOnly(texturenumsurfaces, texturesurfacelist);
+		R_DrawTextureSurfaceList_DepthOnly(texturenumsurfaces, texturesurfacelist, postprocessdepth);
 	else if (prepass)
 	{
 		if (!rsurface.texture->currentnumlayers)
@@ -11862,7 +11951,7 @@ static void R_ProcessWorldTextureSurfaceList(int texturenumsurfaces, const msurf
 	CHECKGLERROR
 }
 
-static void R_QueueWorldSurfaceList(int numsurfaces, const msurface_t **surfacelist, int flagsmask, qboolean writedepth, qboolean depthonly, qboolean prepass)
+static void R_QueueWorldSurfaceList(int numsurfaces, const msurface_t **surfacelist, int flagsmask, qboolean writedepth, qboolean depthonly, qboolean prepass, qboolean postprocessdepth)
 {
 	int i, j;
 	texture_t *texture;
@@ -11903,16 +11992,16 @@ static void R_QueueWorldSurfaceList(int numsurfaces, const msurface_t **surfacel
 				;
 		}
 		// render the range of surfaces
-		R_ProcessWorldTextureSurfaceList(j - i, surfacelist + i, writedepth, depthonly, prepass);
+		R_ProcessWorldTextureSurfaceList(j - i, surfacelist + i, writedepth, depthonly, prepass, postprocessdepth);
 	}
 	R_FrameData_ReturnToMark();
 }
 
-static void R_ProcessModelTextureSurfaceList(int texturenumsurfaces, const msurface_t **texturesurfacelist, qboolean writedepth, qboolean depthonly, qboolean prepass)
+static void R_ProcessModelTextureSurfaceList(int texturenumsurfaces, const msurface_t **texturesurfacelist, qboolean writedepth, qboolean depthonly, qboolean prepass, qboolean postprocessdepth)
 {
 	CHECKGLERROR
 	if (depthonly)
-		R_DrawTextureSurfaceList_DepthOnly(texturenumsurfaces, texturesurfacelist);
+		R_DrawTextureSurfaceList_DepthOnly(texturenumsurfaces, texturesurfacelist, postprocessdepth);
 	else if (prepass)
 	{
 		if (!rsurface.texture->currentnumlayers)
@@ -11940,7 +12029,7 @@ static void R_ProcessModelTextureSurfaceList(int texturenumsurfaces, const msurf
 	CHECKGLERROR
 }
 
-static void R_QueueModelSurfaceList(entity_render_t *ent, int numsurfaces, const msurface_t **surfacelist, int flagsmask, qboolean writedepth, qboolean depthonly, qboolean prepass)
+static void R_QueueModelSurfaceList(entity_render_t *ent, int numsurfaces, const msurface_t **surfacelist, int flagsmask, qboolean writedepth, qboolean depthonly, qboolean prepass, qboolean postprocessdepth)
 {
 	int i, j;
 	texture_t *texture;
@@ -11981,7 +12070,7 @@ static void R_QueueModelSurfaceList(entity_render_t *ent, int numsurfaces, const
 				;
 		}
 		// render the range of surfaces
-		R_ProcessModelTextureSurfaceList(j - i, surfacelist + i, writedepth, depthonly, prepass);
+		R_ProcessModelTextureSurfaceList(j - i, surfacelist + i, writedepth, depthonly, prepass, postprocessdepth);
 	}
 	R_FrameData_ReturnToMark();
 }
@@ -12006,7 +12095,7 @@ unsigned short locboxelements[6*2*3] =
 	20,21,22, 20,22,23
 };
 
-static void R_DrawLoc_Callback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist)
+static void R_DrawLoc_Callback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist, qboolean depthonly)
 {
 	int i, j;
 	cl_locnode_t *loc = (cl_locnode_t *)ent;
@@ -13005,7 +13094,7 @@ static void R_DrawDebugModel(entity_render_t *ent, dp_model_t *model)
 
 int r_maxsurfacelist = 0;
 const msurface_t **r_surfacelist = NULL;
-void R_DrawWorldSurfaces(qboolean skysurfaces, qboolean writedepth, qboolean depthonly, qboolean debug, qboolean prepass)
+void R_DrawWorldSurfaces(qboolean skysurfaces, qboolean writedepth, qboolean depthonly, qboolean debug, qboolean prepass, qboolean postprocessdepth)
 {
 	int i, j, endj, flagsmask;
 	dp_model_t *model = r_refdef.scene.worldmodel;
@@ -13087,7 +13176,7 @@ void R_DrawWorldSurfaces(qboolean skysurfaces, qboolean writedepth, qboolean dep
 		rsurface.entity = NULL; // used only by R_GetCurrentTexture and RSurf_ActiveWorldEntity/RSurf_ActiveModelEntity
 		return;
 	}
-	R_QueueWorldSurfaceList(numsurfacelist, r_surfacelist, flagsmask, writedepth, depthonly, prepass);
+	R_QueueWorldSurfaceList(numsurfacelist, r_surfacelist, flagsmask, writedepth, depthonly, prepass, postprocessdepth);
 
 	// add to stats if desired
 	if (r_speeds.integer && !skysurfaces && !depthonly)
@@ -13100,7 +13189,7 @@ void R_DrawWorldSurfaces(qboolean skysurfaces, qboolean writedepth, qboolean dep
 	rsurface.entity = NULL; // used only by R_GetCurrentTexture and RSurf_ActiveWorldEntity/RSurf_ActiveModelEntity
 }
 
-void R_DrawModelSurfaces(entity_render_t *ent, qboolean skysurfaces, qboolean writedepth, qboolean depthonly, qboolean debug, qboolean prepass)
+void R_DrawModelSurfaces(entity_render_t *ent, qboolean skysurfaces, qboolean writedepth, qboolean depthonly, qboolean debug, qboolean prepass, qboolean postprocessdepth)
 {
 	int i, j, endj, flagsmask;
 	dp_model_t *model = ent->model;
@@ -13223,7 +13312,7 @@ void R_DrawModelSurfaces(entity_render_t *ent, qboolean skysurfaces, qboolean wr
 		}
 	}
 
-	R_QueueModelSurfaceList(ent, numsurfacelist, r_surfacelist, flagsmask, writedepth, depthonly, prepass);
+	R_QueueModelSurfaceList(ent, numsurfacelist, r_surfacelist, flagsmask, writedepth, depthonly, prepass, postprocessdepth);
 
 	// add to stats if desired
 	if (r_speeds.integer && !skysurfaces && !depthonly)
@@ -13280,7 +13369,7 @@ void R_DrawCustomSurface(skinframe_t *skinframe, const matrix4x4_t *texmatrix, i
 	R_DrawModelTextureSurfaceList(1, &surfacelist, writedepth, prepass);
 }
 
-void R_DrawCustomSurface_Texture(texture_t *texture, const matrix4x4_t *texmatrix, int materialflags, int firstvertex, int numvertices, int firsttriangle, int numtriangles, qboolean writedepth, qboolean prepass)
+void R_DrawCustomSurface_Texture(texture_t *texture, const matrix4x4_t *texmatrix, int materialflags, int firstvertex, int numvertices, int firsttriangle, int numtriangles, qboolean writedepth, qboolean depthonly, qboolean prepass, qboolean postprocessdepth)
 {
 	static msurface_t surface;
 	const msurface_t *surfacelist = &surface;
@@ -13293,9 +13382,30 @@ void R_DrawCustomSurface_Texture(texture_t *texture, const matrix4x4_t *texmatri
 	surface.num_firstvertex = firstvertex;
 
 	// now render it
-	rsurface.texture = R_GetCurrentTexture(surface.texture);
+	texture_t *tex = R_GetCurrentTexture(surface.texture);
+	rsurface.texture = texture;
 	rsurface.lightmaptexture = NULL;
 	rsurface.deluxemaptexture = NULL;
 	rsurface.uselightmaptexture = false;
-	R_DrawModelTextureSurfaceList(1, &surfacelist, writedepth, prepass);
+	if (depthonly && (texture->currentmaterialflags & MATERIALFLAG_ALPHA))
+	{
+		bool hasalphatest = (tex->currentmaterialflags & MATERIALFLAG_ALPHATEST) == MATERIALFLAG_ALPHATEST;
+		if (!hasalphatest)
+			tex->currentmaterialflags += MATERIALFLAG_ALPHATEST;
+		bool blended = (tex->currentmaterialflags & MATERIALFLAG_BLENDED) == MATERIALFLAG_BLENDED;
+		if (blended)
+			tex->currentmaterialflags -= MATERIALFLAG_BLENDED;
+		bool shortdepthrange = (tex->currentmaterialflags & MATERIALFLAG_SHORTDEPTHRANGE) == MATERIALFLAG_SHORTDEPTHRANGE;
+		if (shortdepthrange)
+			tex->currentmaterialflags -= MATERIALFLAG_SHORTDEPTHRANGE;
+		R_DrawTextureSurfaceList_DepthOnly(1, &surfacelist, true);
+		if (!hasalphatest)
+			tex->currentmaterialflags -= MATERIALFLAG_ALPHATEST;
+		if (blended)
+			tex->currentmaterialflags += MATERIALFLAG_BLENDED;
+		if (shortdepthrange)
+			tex->currentmaterialflags += MATERIALFLAG_SHORTDEPTHRANGE;
+	}
+	else
+		R_DrawModelTextureSurfaceList(1, &surfacelist, writedepth, prepass);
 }

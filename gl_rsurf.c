@@ -332,7 +332,7 @@ void R_Stain (const vec3_t origin, float radius, int cr1, int cg1, int cb1, int 
 =============================================================
 */
 
-static void R_DrawPortal_Callback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist)
+static void R_DrawPortal_Callback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist, qboolean depthonly)
 {
 	// due to the hacky nature of this function's parameters, this is never
 	// called with a batch, so numsurfaces is always 1, and the surfacelist
@@ -584,9 +584,9 @@ void R_Q1BSP_DrawSky(entity_render_t *ent)
 	if (ent->model == NULL)
 		return;
 	if (ent == r_refdef.scene.worldentity)
-		R_DrawWorldSurfaces(true, true, false, false, false);
+		R_DrawWorldSurfaces(true, true, false, false, false, false);
 	else
-		R_DrawModelSurfaces(ent, true, true, false, false, false);
+		R_DrawModelSurfaces(ent, true, true, false, false, false, false);
 }
 
 void R_Q1BSP_DrawAddWaterPlanes(entity_render_t *ent)
@@ -638,26 +638,32 @@ void R_Q1BSP_Draw(entity_render_t *ent)
 	if (model == NULL)
 		return;
 	if (ent == r_refdef.scene.worldentity)
-		R_DrawWorldSurfaces(false, true, false, false, false);
+		R_DrawWorldSurfaces(false, true, false, false, false, false);
 	else
-		R_DrawModelSurfaces(ent, false, true, false, false, false);
+		R_DrawModelSurfaces(ent, false, true, false, false, false, false);
 }
 
-void R_Q1BSP_DrawDepth(entity_render_t *ent)
+extern cvar_t r_depthtexture;
+extern cvar_t r_vegetation;
+
+void R_Q1BSP_DrawDepth(entity_render_t *ent, qboolean postprocessdepth)
 {
 	dp_model_t *model = ent->model;
-	if (model == NULL || model->surfmesh.isanimated)
+	if (model == NULL || (model->surfmesh.isanimated && !postprocessdepth))
 		return;
-	GL_ColorMask(0,0,0,0);
+	if (r_depthtexture.integer > 0)
+		GL_ColorMask(1,1,1,1);
+	else
+		GL_ColorMask(0,0,0,0);
 	GL_Color(1,1,1,1);
 	GL_DepthTest(true);
 	GL_BlendFunc(GL_ONE, GL_ZERO);
 	GL_DepthMask(true);
 //	R_Mesh_ResetTextureState();
 	if (ent == r_refdef.scene.worldentity)
-		R_DrawWorldSurfaces(false, false, true, false, false);
+		R_DrawWorldSurfaces(false, false, true, false, false, postprocessdepth);
 	else
-		R_DrawModelSurfaces(ent, false, false, true, false, false);
+		R_DrawModelSurfaces(ent, false, false, true, false, false, postprocessdepth);
 	GL_ColorMask(r_refdef.view.colormask[0], r_refdef.view.colormask[1], r_refdef.view.colormask[2], 1);
 }
 
@@ -666,9 +672,9 @@ void R_Q1BSP_DrawDebug(entity_render_t *ent)
 	if (ent->model == NULL)
 		return;
 	if (ent == r_refdef.scene.worldentity)
-		R_DrawWorldSurfaces(false, false, false, true, false);
+		R_DrawWorldSurfaces(false, false, false, true, false, false);
 	else
-		R_DrawModelSurfaces(ent, false, false, false, true, false);
+		R_DrawModelSurfaces(ent, false, false, false, true, false, false);
 }
 
 void R_Q1BSP_DrawPrepass(entity_render_t *ent)
@@ -677,9 +683,9 @@ void R_Q1BSP_DrawPrepass(entity_render_t *ent)
 	if (model == NULL)
 		return;
 	if (ent == r_refdef.scene.worldentity)
-		R_DrawWorldSurfaces(false, true, false, false, true);
+		R_DrawWorldSurfaces(false, true, false, false, true, false);
 	else
-		R_DrawModelSurfaces(ent, false, true, false, false, true);
+		R_DrawModelSurfaces(ent, false, true, false, false, true, false);
 }
 
 typedef struct r_q1bsp_getlightinfo_s
@@ -1449,7 +1455,7 @@ void R_Q1BSP_DrawShadowMap(int side, entity_render_t *ent, const vec3_t relative
 
 #define BATCHSIZE 1024
 
-static void R_Q1BSP_DrawLight_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist)
+static void R_Q1BSP_DrawLight_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist, qboolean depthonly)
 {
 	int i, j, endsurface;
 	texture_t *t;

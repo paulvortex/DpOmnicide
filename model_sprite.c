@@ -493,7 +493,7 @@ void Mod_IDSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 
 	loadmodel->DrawSky = NULL;
 	loadmodel->Draw = R_Model_Sprite_Draw;
-	loadmodel->DrawDepth = NULL;
+	loadmodel->DrawDepth = R_Model_Sprite_DrawDepth;
 	loadmodel->CompileShadowVolume = NULL;
 	loadmodel->DrawShadowVolume = NULL;
 	loadmodel->DrawLight = NULL;
@@ -627,7 +627,7 @@ void Mod_IDS2_Load(dp_model_t *mod, void *buffer, void *bufferend)
 
 	loadmodel->DrawSky = NULL;
 	loadmodel->Draw = R_Model_Sprite_Draw;
-	loadmodel->DrawDepth = NULL;
+	loadmodel->DrawDepth = R_Model_Sprite_DrawDepth;
 	loadmodel->CompileShadowVolume = NULL;
 	loadmodel->DrawShadowVolume = NULL;
 	loadmodel->DrawLight = NULL;

@@ -2125,7 +2125,7 @@ void R_Shadow_RenderMode_StencilShadowVolumes(qboolean zpass)
 	GL_ColorMask(0, 0, 0, 0);
 	GL_PolygonOffset(r_refdef.shadowpolygonfactor, r_refdef.shadowpolygonoffset);CHECKGLERROR
 	GL_CullFace(GL_NONE);
-	R_SetupShader_DepthOrShadow(false, false, false); // FIXME test if we have a skeletal model?
+	R_SetupShader_DepthOrShadow(false, false, false, false); // FIXME test if we have a skeletal model?
 	r_shadow_rendermode = mode;
 	switch(mode)
 	{
@@ -2206,7 +2206,7 @@ void R_Shadow_ClearShadowMapTexture(void)
 		R_Mesh_SetRenderTargets(r_shadow_fbo2d, r_shadow_shadowmap2ddepthbuffer, r_shadow_shadowmap2ddepthtexture, NULL, NULL, NULL);
 	else
 		R_Mesh_SetRenderTargets(r_shadow_fbo2d, r_shadow_shadowmap2ddepthtexture, NULL, NULL, NULL, NULL);
-	R_SetupShader_DepthOrShadow(true, r_shadow_shadowmap2ddepthbuffer != NULL, false); // FIXME test if we have a skeletal model?
+	R_SetupShader_DepthOrShadow(true, r_shadow_shadowmap2ddepthbuffer != NULL, false, false); // FIXME test if we have a skeletal model?
 	GL_PolygonOffset(r_shadow_shadowmapping_polygonfactor.value, r_shadow_shadowmapping_polygonoffset.value);
 	GL_DepthMask(true);
 	GL_DepthTest(true);
@@ -2283,7 +2283,7 @@ static void R_Shadow_RenderMode_ShadowMap(int side, int size, int x, int y)
 			R_Mesh_SetRenderTargets(r_shadow_fbo2d, r_shadow_shadowmap2ddepthbuffer, r_shadow_shadowmap2ddepthtexture, NULL, NULL, NULL);
 		else
 			R_Mesh_SetRenderTargets(r_shadow_fbo2d, r_shadow_shadowmap2ddepthtexture, NULL, NULL, NULL, NULL);
-		R_SetupShader_DepthOrShadow(true, r_shadow_shadowmap2ddepthbuffer != NULL, false); // FIXME test if we have a skeletal model?
+		R_SetupShader_DepthOrShadow(true, r_shadow_shadowmap2ddepthbuffer != NULL, false, false); // FIXME test if we have a skeletal model?
 		GL_PolygonOffset(r_shadow_shadowmapping_polygonfactor.value, r_shadow_shadowmapping_polygonoffset.value);
 		GL_DepthMask(true);
 		GL_DepthTest(true);
@@ -6071,7 +6071,7 @@ static void R_Shadow_SelectLight(dlight_t *light)
 		r_shadow_selectedlight->selected = true;
 }
 
-static void R_Shadow_DrawCursor_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist)
+static void R_Shadow_DrawCursor_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist, qboolean depthonly)
 {
 	// this is never batched (there can be only one)
 	float vertex3f[12];
@@ -6080,7 +6080,7 @@ static void R_Shadow_DrawCursor_TransparentCallback(const entity_render_t *ent, 
 	R_DrawCustomSurface(r_editlights_sprcursor, &identitymatrix, MATERIALFLAG_NODEPTHTEST | MATERIALFLAG_ALPHA | MATERIALFLAG_BLENDED | MATERIALFLAG_FULLBRIGHT | MATERIALFLAG_NOCULLFACE, 0, 4, 0, 2, false, false);
 }
 
-static void R_Shadow_DrawLightSprite_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist)
+static void R_Shadow_DrawLightSprite_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist, qboolean depthonly)
 {
 	float intensity;
 	float s;

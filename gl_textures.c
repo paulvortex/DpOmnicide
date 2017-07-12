@@ -2254,7 +2254,7 @@ int R_SaveTextureDDSFile(rtexture_t *rt, const char *filename, qboolean skipunco
 #include "ktx10/include/ktx.h"
 #endif
 
-// bool R_CheckDDSFile(unsigned char *, fs_offset_t)
+// bool R_CheckDDSFile(unsigned char *, fs_offset_t)  
 // check DDS file and retrieve texture type
 qboolean R_CheckDDSFile(char *filename, unsigned char *dds, fs_offset_t ddsfilesize, textype_t *textype)
 {
@@ -2954,6 +2954,15 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *basen
 			avgcolor[2] = (float)(dds[43] / 255.0f);
 			avgcolor[3] = 1.0f;
 			genavgcolor = false;
+			// convert to RGB
+			if (textype == TEXTYPE_SRGB_ETC2RGB || textype == TEXTYPE_SRGB_ETC2RGBA1 || textype == TEXTYPE_SRGB_ETC2RGBA || textype == TEXTYPE_SRGB_PALETTE ||
+				textype == TEXTYPE_SRGB_RGBA || textype == TEXTYPE_SRGB_BGRA || textype == TEXTYPE_SRGB_DXT1 || textype == TEXTYPE_SRGB_DXT1A || 
+				textype == TEXTYPE_SRGB_DXT3 || textype == TEXTYPE_SRGB_DXT5)
+			{
+				avgcolor[0] = Image_LinearFloatFromsRGBFloat(avgcolor[0]);
+				avgcolor[1] = Image_LinearFloatFromsRGBFloat(avgcolor[1]);
+				avgcolor[2] = Image_LinearFloatFromsRGBFloat(avgcolor[2]);
+			}
 		}
 		if (textype == TEXTYPE_ETC1 || textype == TEXTYPE_ETC2RGB || textype == TEXTYPE_ETC2RGBA1 || textype == TEXTYPE_ETC2RGBA)
 			genavgcolor = false;

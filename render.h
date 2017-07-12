@@ -473,11 +473,11 @@ void RSurf_SetupDepthAndCulling(void);
 void R_Mesh_ResizeArrays(int newvertices);
 
 texture_t *R_GetCurrentTexture(texture_t *t);
-void R_DrawWorldSurfaces(qboolean skysurfaces, qboolean writedepth, qboolean depthonly, qboolean debug, qboolean prepass);
-void R_DrawModelSurfaces(entity_render_t *ent, qboolean skysurfaces, qboolean writedepth, qboolean depthonly, qboolean debug, qboolean prepass);
+void R_DrawWorldSurfaces(qboolean skysurfaces, qboolean writedepth, qboolean depthonly, qboolean debug, qboolean prepass, qboolean postprocessdepth);
+void R_DrawModelSurfaces(entity_render_t *ent, qboolean skysurfaces, qboolean writedepth, qboolean depthonly, qboolean debug, qboolean prepass, qboolean postprocessdepth);
 void R_AddWaterPlanes(entity_render_t *ent);
 void R_DrawCustomSurface(skinframe_t *skinframe, const matrix4x4_t *texmatrix, int materialflags, int firstvertex, int numvertices, int firsttriangle, int numtriangles, qboolean writedepth, qboolean prepass);
-void R_DrawCustomSurface_Texture(texture_t *texture, const matrix4x4_t *texmatrix, int materialflags, int firstvertex, int numvertices, int firsttriangle, int numtriangles, qboolean writedepth, qboolean prepass);
+void R_DrawCustomSurface_Texture(texture_t *texture, const matrix4x4_t *texmatrix, int materialflags, int firstvertex, int numvertices, int firsttriangle, int numtriangles, qboolean writedepth, qboolean depthonly, qboolean prepass, qboolean postprocessdepth);
 
 #define BATCHNEED_VERTEXMESH_VERTEX      (1<< 1) // set up rsurface.batchvertexmesh
 #define BATCHNEED_VERTEXMESH_NORMAL      (1<< 2) // set up normals in rsurface.batchvertexmesh if BATCHNEED_MESH, set up rsurface.batchnormal3f if BATCHNEED_ARRAYS
@@ -511,7 +511,7 @@ rsurfacepass_t;
 
 void R_SetupShader_Generic(rtexture_t *first, rtexture_t *second, int texturemode, int rgbscale, qboolean usegamma, qboolean notrippy, qboolean suppresstexalpha, qboolean usefog);
 void R_SetupShader_Generic_NoTexture(qboolean usegamma, qboolean notrippy);
-void R_SetupShader_DepthOrShadow(qboolean notrippy, qboolean depthrgb, qboolean skeletal);
+void R_SetupShader_DepthOrShadow(qboolean notrippy, qboolean depthrgb, qboolean skeletal, qboolean rsurface);
 void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, float ambientscale, float diffusescale, float specularscale, rsurfacepass_t rsurfacepass, int texturenumsurfaces, const msurface_t **texturesurfacelist, void *waterplane, qboolean notrippy);
 void R_SetupShader_DeferredLight(const rtlight_t *rtlight);
 
@@ -565,6 +565,7 @@ typedef struct r_framebufferstate_s
 	rtexture_t *depthtexture; // non-NULL if fbo is non-zero
 	rtexture_t *ghosttexture; // for r_motionblur (not recommended on multi-GPU hardware!)
 	rtexture_t *bloomtexture[2]; // for r_bloom, multi-stage processing
+	rtexture_t *postprocessdepthtexture; // depth texture for postprocess
 	int bloomfbo[2]; // fbos for rendering into bloomtexture[]
 	int bloomindex; // which bloomtexture[] contains the final image
 
@@ -617,6 +618,7 @@ extern cvar_t r_transparent_sortmindist;
 extern cvar_t r_transparent_sortmaxdist;
 
 void R_Model_Sprite_Draw(entity_render_t *ent);
+void R_Model_Sprite_DrawDepth(entity_render_t *ent, qboolean postprocessdepth);
 
 struct prvm_prog_s;
 void R_UpdateFog(void);

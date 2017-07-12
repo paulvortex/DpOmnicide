@@ -200,7 +200,7 @@ void R_NewExplosion(const vec3_t org)
 }
 
 #ifdef MAX_EXPLOSIONS
-static void R_DrawExplosion_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist)
+static void R_DrawExplosion_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist, qboolean depthonly)
 {
 	int surfacelistindex = 0;
 	const int numtriangles = EXPLOSIONTRIS, numverts = EXPLOSIONVERTS;

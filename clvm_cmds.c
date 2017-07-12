@@ -3340,7 +3340,7 @@ static void VM_InitPolygons (vmpolygons_t* polys)
 	polys->initialized = true;
 }
 
-static void VM_DrawPolygonCallback (const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist)
+static void VM_DrawPolygonCallback (const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist, qboolean depthonly)
 {
 	int surfacelistindex;
 	vmpolygons_t *polys = (vmpolygons_t *)ent;

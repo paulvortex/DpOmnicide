@@ -1120,7 +1120,7 @@ typedef struct model_s
 	// draw the model using lightmap/dlight shading
 	void(*Draw)(struct entity_render_s *ent);
 	// draw the model to the depth buffer (no color rendering at all)
-	void(*DrawDepth)(struct entity_render_s *ent);
+	void(*DrawDepth)(struct entity_render_s *ent, qboolean postprocessdepth);
 	// draw any enabled debugging effects on this model (such as showing triangles, normals, collision brushes...)
 	void(*DrawDebug)(struct entity_render_s *ent);
 	// draw geometry textures for deferred rendering
@@ -1282,7 +1282,7 @@ struct entity_render_s;
 void R_Q1BSP_DrawAddWaterPlanes(struct entity_render_s *ent);
 void R_Q1BSP_DrawSky(struct entity_render_s *ent);
 void R_Q1BSP_Draw(struct entity_render_s *ent);
-void R_Q1BSP_DrawDepth(struct entity_render_s *ent);
+void R_Q1BSP_DrawDepth(struct entity_render_s *ent, bool postprocessdepth);
 void R_Q1BSP_DrawDebug(struct entity_render_s *ent);
 void R_Q1BSP_DrawPrepass(struct entity_render_s *ent);
 void R_Q1BSP_GetLightInfo(struct entity_render_s *ent, vec3_t relativelightorigin, float lightradius, vec3_t outmins, vec3_t outmaxs, int *outleaflist, unsigned char *outleafpvs, int *outnumleafspointer, int *outsurfacelist, unsigned char *outsurfacepvs, int *outnumsurfacespointer, unsigned char *outshadowtrispvs, unsigned char *outlighttrispvs, unsigned char *visitingleafpvs, int numfrustumplanes, const mplane_t *frustumplanes);

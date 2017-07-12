@@ -2502,7 +2502,7 @@ void R_Particles_Init (void)
 	R_RegisterModule("R_Particles", r_part_start, r_part_shutdown, r_part_newmap, NULL, NULL);
 }
 
-static void R_DrawDecal_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist)
+static void R_DrawDecal_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist, qboolean depthonly)
 {
 	int surfacelistindex;
 	const decal_t *d;
@@ -2653,7 +2653,7 @@ killdecal:
 	r_refdef.stats[r_stat_totaldecals] = cl.num_decals;
 }
 
-static void R_DrawParticle_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist)
+static void R_DrawParticle_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist, qboolean depthonly)
 {
 	vec3_t vecorg, vecvel, baseright, baseup;
 	int surfacelistindex;

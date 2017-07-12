@@ -217,7 +217,7 @@ static void R_CalcLightningBeamPolygonTexCoord2f(float *tc, float t1, float t2)
 
 float beamrepeatscale;
 
-static void R_DrawLightningBeam_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist)
+static void R_DrawLightningBeam_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist, qboolean depthonly)
 {
 	int surfacelistindex;
 	float vertex3f[12*3];

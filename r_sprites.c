@@ -205,7 +205,7 @@ static void R_RotateSprite(const mspriteframe_t *frame, vec3_t origin, vec3_t le
 
 static float spritetexcoord2f[4*2] = {0, 1, 0, 0, 1, 0, 1, 1};
 
-static void R_Model_Sprite_Draw_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist)
+static void R_Model_Sprite_Draw_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist, qboolean depthonly)
 {
 	int i;
 	dp_model_t *model = ent->model;
@@ -381,16 +381,20 @@ static void R_Model_Sprite_Draw_TransparentCallback(const entity_render_t *ent, 
 		break;
 	}
 
+	// draw sprite
+	int maxblends = MAX_FRAMEBLENDS;
+	if (depthonly)
+		maxblends = 1;
 	// LordHavoc: interpolated sprite rendering
-	for (i = 0;i < MAX_FRAMEBLENDS;i++)
+	for (i = 0;i < maxblends;i++)
 	{
 		if (ent->frameblend[i].lerp >= 0.01f)
 		{
 			mspriteframe_t *frame;
 			texture_t *texture;
 			frame = model->sprite.sprdata_frames + ent->frameblend[i].subframe;
-			RSurf_ActiveCustomEntity(&identitymatrix, &identitymatrix, ent->flags, 0, ent->colormod[0], ent->colormod[1], ent->colormod[2], ent->alpha * ent->frameblend[i].lerp, 4, vertex3f, frame->texcoord2f, NULL, NULL, NULL, NULL, 2, polygonelement3i, polygonelement3s, false, false);
- 			texture = R_GetCurrentTexture(model->data_textures + frame->texnum);
+			RSurf_ActiveCustomEntity(&identitymatrix, &identitymatrix, ent->flags, 0, ent->colormod[0], ent->colormod[1], ent->colormod[2], ent->alpha * (maxblends == 1 ? 1.0f : ent->frameblend[i].lerp), 4, vertex3f, frame->texcoord2f, NULL, NULL, NULL, NULL, 2, polygonelement3i, polygonelement3s, false, false);
+			texture = R_GetCurrentTexture(model->data_textures + frame->texnum);
 		
 			// lit sprite by lightgrid if it is not fullbright, lit only ambient
 			if (!(texture->currentmaterialflags & MATERIALFLAG_FULLBRIGHT))
@@ -410,10 +414,9 @@ static void R_Model_Sprite_Draw_TransparentCallback(const entity_render_t *ent, 
 
 			R_CalcSprite_Vertex3f(vertex3f, org, left, up, frame->left, frame->right, frame->down, frame->up);
 
-			R_DrawCustomSurface_Texture(texture, &identitymatrix, texture->currentmaterialflags, 0, 4, 0, 2, false, false);
+			R_DrawCustomSurface_Texture(texture, &identitymatrix, texture->currentmaterialflags, 0, 4, 0, 2, false, depthonly, false, depthonly);
 		}
 	}
-
 	rsurface.entity = NULL;
 }
 
@@ -427,3 +430,25 @@ void R_Model_Sprite_Draw(entity_render_t *ent)
 	R_MeshQueue_AddTransparent((ent->flags & RENDER_WORLDOBJECT) ? TRANSPARENTSORT_SKY : (ent->flags & RENDER_NODEPTHTEST) ? TRANSPARENTSORT_HUD : TRANSPARENTSORT_DISTANCE, org, R_Model_Sprite_Draw_TransparentCallback, ent, 0, rsurface.rtlight);
 }
 
+extern cvar_t r_depthtexture;
+
+void R_Model_Sprite_DrawDepth(entity_render_t *ent, qboolean postprocessdepth)
+{
+	vec3_t org;
+
+	if (!postprocessdepth)
+		return;
+	if (r_depthtexture.integer > 0)
+		GL_ColorMask(1,1,1,1);
+	else
+		GL_ColorMask(0,0,0,0);
+	GL_Color(1,1,1,1);
+	GL_DepthTest(true);
+	GL_BlendFunc(GL_ONE, GL_ZERO);
+	GL_DepthMask(true);
+
+	Matrix4x4_OriginFromMatrix(&ent->matrix, org);
+	R_Model_Sprite_Draw_TransparentCallback(ent, NULL, 0, NULL, true);
+
+	GL_ColorMask(r_refdef.view.colormask[0], r_refdef.view.colormask[1], r_refdef.view.colormask[2], 1);
+}
